@@ -42,4 +42,12 @@ describe("htmlToMarkdown", () => {
     expect(markdown).not.toContain("evil");
     expect(markdown).not.toContain("menu");
   });
+
+  it("does not leak the <title> text into the body", () => {
+    const { markdown } = htmlToMarkdown(
+      "<html><head><title>Only Title</title></head><body><h1>Heading</h1><p>Text</p></body></html>",
+    );
+    expect(markdown).not.toContain("Only Title");
+    expect(markdown).toContain("# Heading");
+  });
 });

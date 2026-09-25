@@ -1,4 +1,5 @@
 import express, { Router } from "express";
+import { importNotes } from "../controllers/import.controller.js";
 import { protect } from "../middlewares/auth.middleware.js";
 import {
   askWorkspace,
@@ -33,6 +34,7 @@ semanticRouter.post(
 semanticRouter.get("/attachments/:attachmentId", downloadAttachment);
 semanticRouter.delete("/attachments/:attachmentId", deleteAttachment);
 
+semanticRouter.post("/import", importNotes);
 semanticRouter.post("/clip", clipUrl);
 semanticRouter.post("/link-preview", linkPreview);
 

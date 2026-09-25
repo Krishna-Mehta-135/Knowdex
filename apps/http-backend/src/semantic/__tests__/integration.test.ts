@@ -37,6 +37,7 @@ d("semantic API (real db)", () => {
   let otherToken = "";
   let wid = "";
   const ids: Record<string, string> = {};
+  const importedIds: string[] = [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let prisma: any;
   const suffix = Math.random().toString(36).slice(2, 8);
@@ -272,6 +273,85 @@ d("semantic API (real db)", () => {
       body: "not a pdf",
     });
     expect(fakePdf.status).toBe(400);
+  });
+
+  it("imports markdown: creates notes, tags, folders, backlinks, and indexes them", async () => {
+    const res = await json(`/import`, {
+      workspaceId: wid,
+      files: [
+        {
+          path: "Vault/Sub/Espresso.md",
+          markdown:
+            "---\ntags: [coffee]\n---\n# Espresso\n\nEspresso needs fine grounds and pressure. See [[Grinders]] and [[Chocolate Cake]].\n\n- [ ] buy beans",
+        },
+        {
+          path: "Vault/Grinders.md",
+          markdown:
+            "Burr grinders give consistent grounds for espresso and filter coffee.",
+        },
+      ],
+    });
+    expect(res.status).toBe(201);
+    const body = (await res.json()).data;
+    expect(body.created.map((c: { title: string }) => c.title).sort()).toEqual([
+      "Espresso",
+      "Grinders",
+    ]);
+    expect(body.failed).toEqual([]);
+    expect(body.links).toBe(2); // Grinders (new) + Chocolate Cake (existing)
+    for (const c of body.created) importedIds.push(c.id);
+
+    const esp = await prisma.content.findFirst({
+      where: { workspaceId: wid, title: "Espresso" },
+      include: { tags: true },
+    });
+    expect(esp.folderPath).toBe("Vault / Sub");
+    expect(esp.tags.map((t: { name: string }) => t.name)).toEqual(["coffee"]);
+    const links = await prisma.documentLink.findMany({
+      where: { fromDocId: esp.id },
+    });
+    expect(links).toHaveLength(2);
+
+    const { sweepIndex } = await import("../indexer.js");
+    while ((await sweepIndex(50)) > 0) {
+      /* drain */
+    }
+    const s = await (
+      await json(`/workspaces/${wid}/search`, {
+        query: "burr grinder coffee grounds",
+      })
+    ).json();
+    expect(s.data.map((x: { title: string }) => x.title)).toContain("Grinders");
+    const g = await (await api(`/workspaces/${wid}/graph`)).json();
+    expect(
+      g.data.edges.some((e: { a: string; b: string }) => e.a === esp.id),
+    ).toBe(true);
+  });
+
+  it("import validates payload and membership", async () => {
+    expect(
+      (await json(`/import`, { workspaceId: wid, files: [] })).status,
+    ).toBe(400);
+    expect(
+      (
+        await json(`/import`, {
+          workspaceId: "nope",
+          files: [{ path: "a.md", markdown: "x" }],
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await json(
+          `/import`,
+          { workspaceId: wid, files: [{ path: "a.md", markdown: "x" }] },
+          otherToken,
+        )
+      ).status,
+    ).toBe(403);
+    expect(
+      (await fetch(`${base}/api/v1/kx/import`, { method: "POST" })).status,
+    ).toBe(401);
   });
 
   it("clipper blocks private/loopback URLs (SSRF)", async () => {

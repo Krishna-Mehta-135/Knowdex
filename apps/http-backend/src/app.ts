@@ -34,6 +34,9 @@ app.use(
   }),
 );
 
+// Bulk import carries whole vaults of Markdown; give it room before the
+// default (small) JSON parser claims the request.
+app.use("/api/v1/kx/import", express.json({ limit: "9mb" }));
 app.use(express.json());
 
 // Request Logger for debugging

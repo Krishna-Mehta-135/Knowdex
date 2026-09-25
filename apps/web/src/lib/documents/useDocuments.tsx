@@ -24,6 +24,8 @@ interface DocumentsContextType {
     patch: Record<string, unknown>,
   ) => Promise<boolean>;
   patchDocumentInCache: (docId: string, partial: Partial<Document>) => void;
+  /** Re-fetch the list (e.g. after a bulk import). */
+  reload: () => void;
 }
 
 const DocumentsContext = createContext<DocumentsContextType | undefined>(
@@ -34,6 +36,8 @@ export function DocumentsProvider({ children }: { children: ReactNode }) {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reloadTick, setReloadTick] = useState(0);
+  const reload = useCallback(() => setReloadTick((t) => t + 1), []);
   const router = useRouter();
   const auth = useAuth();
   const { activeWorkspaceId, isLoading: wsLoading } = useWorkspace();
@@ -101,7 +105,7 @@ export function DocumentsProvider({ children }: { children: ReactNode }) {
 
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auth.status, router, activeWorkspaceId, wsLoading]);
+  }, [auth.status, router, activeWorkspaceId, wsLoading, reloadTick]);
 
   const createDocument = useCallback(
     async (opts?: { folderPath?: string }) => {
@@ -226,6 +230,7 @@ export function DocumentsProvider({ children }: { children: ReactNode }) {
         deleteDocument,
         updateDocument,
         patchDocumentInCache,
+        reload,
       }}
     >
       {children}

@@ -34,7 +34,7 @@ export function htmlToMarkdown(html: string): {
     extractMeta(html, "og:description") ?? extractMeta(html, "description");
   const image = extractMeta(html, "og:image");
 
-  let body = html;
+  let body = html.replace(/<head[\s\S]*?<\/head>/i, "");
   const article =
     body.match(/<article[\s\S]*?<\/article>/i)?.[0] ??
     body.match(/<main[\s\S]*?<\/main>/i)?.[0];
