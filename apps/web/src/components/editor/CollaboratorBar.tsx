@@ -2,10 +2,13 @@
 import { useDocument } from "@/lib/sync/useDocument";
 import { useEffect, useState, useCallback } from "react";
 import type { UserPresence } from "@/lib/sync/awareness";
+import { useAIPresence } from "@/lib/sync/useAIPresence";
+import { Sparkles } from "lucide-react";
 
 export function CollaboratorBar() {
   const { awareness } = useDocument();
   const [collaborators, setCollaborators] = useState<UserPresence[]>([]);
+  const aiSessions = useAIPresence(awareness);
 
   const updateCollaborators = useCallback(() => {
     if (!awareness) return;
@@ -46,6 +49,14 @@ export function CollaboratorBar() {
 
   return (
     <div className="flex -space-x-2 overflow-hidden">
+      {aiSessions.length > 0 && (
+        <div
+          className="inline-flex h-7 w-7 shrink-0 animate-pulse items-center justify-center rounded-full bg-fuchsia-500 text-white shadow-sm ring-2 ring-[hsl(var(--sb-bg-panel))]"
+          title={`Knowdex AI is writing for ${aiSessions[0]!.requestedBy}`}
+        >
+          <Sparkles size={13} />
+        </div>
+      )}
       {collaborators.map((c) => (
         <div
           key={c.userId}

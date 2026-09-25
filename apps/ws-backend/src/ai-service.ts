@@ -60,6 +60,34 @@ export class GeminiAIService implements AIService {
       const entry = await this.documentManager.getOrCreate(request.docId);
       const currentContent = entry.doc.getXmlFragment("content").toString();
 
+      // Dev/test only: stream a canned answer so the UI can be exercised
+      // without a Gemini key. Never enabled unless AI_MOCK=1 is set explicitly.
+      if (process.env.AI_MOCK === "1") {
+        const canned = [
+          "## Mock AI draft\n\n",
+          `You asked: **${request.prompt.slice(0, 80)}**.\n\n`,
+          "- Point one about the note\n- Point two with a link to [[Sourdough Bread]]\n\n",
+          "This text is streamed word by word by the development mock.",
+        ].join("");
+        for (const word of canned.match(/\S+\s*/g) ?? []) {
+          if (controller.signal.aborted) break;
+          await new Promise((r) => setTimeout(r, 90));
+          yield {
+            requestId: request.requestId,
+            text: word,
+            update: new Uint8Array(0),
+            isDone: false,
+          };
+        }
+        yield {
+          requestId: request.requestId,
+          text: "",
+          update: new Uint8Array(0),
+          isDone: true,
+        };
+        return;
+      }
+
       // 3. Initialize Gemini model
       // gemini-2.5-flash is the primary model for this environment.
       const model = this.genAI.getGenerativeModel({

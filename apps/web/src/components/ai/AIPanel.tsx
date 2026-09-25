@@ -5,6 +5,7 @@ import { AIPromptForm } from "./AIPromptForm";
 import { AIStatusBar } from "./AIStatusBar";
 import { AIHistory, addToHistory } from "./AIHistory";
 import { useAIWriter } from "./hooks/useAIWriter";
+import { AILiveBanner } from "./AILiveBanner";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -19,7 +20,28 @@ interface AIPanelProps {
 export function AIPanel({ editor }: AIPanelProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [reusePrompt, setReusePrompt] = useState<string | undefined>(undefined);
-  const { status, error, startWriting, cancelWriting, reset } = useAIWriter();
+  const {
+    status,
+    error,
+    pending,
+    reviewMode,
+    setReviewMode,
+    startWriting,
+    cancelWriting,
+    accept,
+    discard,
+    reset,
+  } = useAIWriter();
+
+  const banner = (
+    <AILiveBanner
+      writing={status === "writing"}
+      pending={pending}
+      onStop={cancelWriting}
+      onAccept={accept}
+      onDiscard={discard}
+    />
+  );
 
   const handleSubmit = useCallback(
     async (options: { prompt: string; insertPosition: InsertPosition }) => {
@@ -35,20 +57,24 @@ export function AIPanel({ editor }: AIPanelProps) {
 
   if (!isOpen) {
     return (
-      <Button
-        variant="outline"
-        size="lg"
-        onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 right-6 shadow-xl gap-2 bg-[hsl(var(--sb-bg-panel))] hover:bg-[hsl(var(--sb-bg-hover))] border border-[hsl(var(--sb-border))] text-[hsl(var(--sb-text))] rounded-full h-12 px-6 z-50 font-medium transition-all hover:border-[hsl(var(--sb-accent))] hover:text-[hsl(var(--sb-accent))]"
-      >
-        <Wand2 className="h-5 w-5" />
-        AI Assistant
-      </Button>
+      <>
+        {banner}
+        <Button
+          variant="outline"
+          size="lg"
+          onClick={() => setIsOpen(true)}
+          className="fixed bottom-6 right-6 shadow-xl gap-2 bg-[hsl(var(--sb-bg-panel))] hover:bg-[hsl(var(--sb-bg-hover))] border border-[hsl(var(--sb-border))] text-[hsl(var(--sb-text))] rounded-full h-12 px-6 z-50 font-medium transition-all hover:border-[hsl(var(--sb-accent))] hover:text-[hsl(var(--sb-accent))]"
+        >
+          <Wand2 className="h-5 w-5" />
+          AI Assistant
+        </Button>
+      </>
     );
   }
 
   return (
     <>
+      {banner}
       {/* Mobile overlay backdrop */}
       {isOpen && (
         <div
@@ -97,6 +123,16 @@ export function AIPanel({ editor }: AIPanelProps) {
                   onCancel={cancelWriting}
                   initialPrompt={reusePrompt}
                 />
+
+                <label className="flex cursor-pointer items-center gap-2 text-[11px] text-[hsl(var(--sb-text-muted))]">
+                  <input
+                    type="checkbox"
+                    checked={reviewMode}
+                    onChange={(e) => setReviewMode(e.target.checked)}
+                    className="accent-[hsl(var(--sb-accent))]"
+                  />
+                  Review before inserting
+                </label>
 
                 {error && (
                   <div className="flex gap-2 p-3 text-[11px] text-[hsl(var(--sb-danger))] bg-[hsl(var(--sb-danger))]/5 rounded-lg border border-[hsl(var(--sb-danger))]/10">

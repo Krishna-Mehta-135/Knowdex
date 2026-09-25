@@ -34,6 +34,12 @@ export function AIStatusBar({ status }: AIStatusBarProps) {
           <span>AI is generating content...</span>
         </>
       )}
+      {status === "review" && (
+        <>
+          <Sparkles className="h-3 w-3" />
+          <span>Suggestion ready — review it</span>
+        </>
+      )}
       {status === "done" && (
         <>
           <CheckCircle2 className="h-3 w-3" />

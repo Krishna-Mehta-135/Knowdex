@@ -10,6 +10,30 @@ import type { Server } from "node:http";
 const DB = process.env.TEST_DATABASE_URL;
 const d = DB ? describe : describe.skip;
 
+/** Smallest valid-enough PDF with one line of text (pdf.js rebuilds a missing xref). */
+function tinyPdf(text: string): Buffer {
+  const stream = `BT /F1 18 Tf 40 100 Td (${text}) Tj ET`;
+  const objs = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 200] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+    `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+  ];
+  let out = "%PDF-1.4\n";
+  const offsets: number[] = [];
+  objs.forEach((o, i) => {
+    offsets.push(out.length);
+    out += `${i + 1} 0 obj\n${o}\nendobj\n`;
+  });
+  const xref = out.length;
+  out +=
+    `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n` +
+    offsets.map((o) => `${String(o).padStart(10, "0")} 00000 n \n`).join("");
+  out += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+  return Buffer.from(out, "latin1");
+}
+
 function state(paragraphs: string[], wiki?: string) {
   const doc = new Y.Doc();
   const frag = doc.getXmlFragment("content");
@@ -258,6 +282,48 @@ d("semantic API (real db)", () => {
       (await api(`/attachments/${att.id}`, { method: "DELETE" })).status,
     ).toBe(200);
     expect((await api(`/attachments/${att.id}`)).status).toBe(404);
+  });
+
+  it("uploads a real PDF, extracts its text and makes it searchable + citable", async () => {
+    const pdf = tinyPdf(
+      "Quarterly telescope calibration procedure for the observatory",
+    );
+    const up = await api(
+      `/attachments?docId=${ids.graphs}&name=calibration.pdf`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/pdf" },
+        body: new Uint8Array(pdf),
+      },
+    );
+    expect(up.status).toBe(201);
+    const att = (await up.json()).data;
+    expect(att.hasText).toBe(true);
+    await new Promise((r) => setTimeout(r, 800));
+    const s = await (
+      await json(`/workspaces/${wid}/search`, {
+        query: "telescope calibration observatory",
+      })
+    ).json();
+    expect(s.data[0]).toMatchObject({
+      kind: "file",
+      title: "calibration.pdf",
+      id: ids.graphs,
+    });
+    const ask = await (
+      await json(`/workspaces/${wid}/ask`, {
+        question: "How is the telescope calibrated?",
+      })
+    ).text();
+    expect(ask).toContain("calibration.pdf");
+    const g = await (await api(`/workspaces/${wid}/graph`)).json();
+    expect(
+      g.data.nodes.find((n: { id: string }) => n.id === att.id),
+    ).toMatchObject({ kind: "file", parentId: ids.graphs });
+    const dl = await api(`/attachments/${att.id}`);
+    expect(dl.headers.get("content-type")).toBe("application/pdf");
+    expect(dl.headers.get("content-security-policy")).toBeNull(); // PDF viewer must not be sandboxed
+    await api(`/attachments/${att.id}`, { method: "DELETE" });
   });
 
   it("rejects bad uploads", async () => {

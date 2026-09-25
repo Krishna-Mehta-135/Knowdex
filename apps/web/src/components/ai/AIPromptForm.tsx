@@ -11,7 +11,7 @@ type InsertMode = "cursor" | "append" | "replace";
 
 interface AIPromptFormProps {
   editor: Editor | null;
-  status: "idle" | "writing" | "done" | "error" | "cancelled";
+  status: "idle" | "writing" | "review" | "done" | "error" | "cancelled";
   onSubmit: (options: {
     prompt: string;
     insertPosition: InsertPosition;

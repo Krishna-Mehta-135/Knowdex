@@ -12,6 +12,15 @@ export interface UserPresence {
   color: string;
   cursor: { anchor: number; head: number } | null;
   lastSeen: number;
+  /** Set while this user's AI request is streaming, so peers can watch it live. */
+  ai?: AIPresence | null;
+}
+
+export interface AIPresence {
+  requestedBy: string;
+  /** Tail of the text generated so far. */
+  text: string;
+  at: number;
 }
 
 /**
