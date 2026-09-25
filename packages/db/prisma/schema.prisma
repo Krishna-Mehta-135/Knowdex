@@ -166,3 +166,17 @@ model Attachment {
   @@index([docId])
   @@index([workspaceId])
 }
+
+/** Point-in-time snapshots of a note's Y.Doc for history / restore. */
+model DocVersion {
+  id        String   @id @default(uuid())
+  docId     String
+  state     Bytes
+  wordCount Int      @default(0)
+  preview   String   @default("")
+  /// "auto" (background) | "manual" (checkpoint / before-restore)
+  kind      String   @default("auto")
+  createdAt DateTime @default(now())
+
+  @@index([docId, createdAt])
+}

@@ -420,6 +420,56 @@ d("semantic API (real db)", () => {
     ).toBe(401);
   });
 
+  it("version history: sweep snapshots quiet edited notes; list/get/create/permissions", async () => {
+    const { snapshotSweep } = await import("../versions.js");
+    const countFor = (id: string) =>
+      prisma.docVersion.count({ where: { docId: id } });
+    // Touch the note so it counts as "just edited" (the DB may be shared with other data).
+    await prisma.docVersion.deleteMany({ where: { docId: ids.cake } });
+    await prisma.document.update({
+      where: { id: ids.cake },
+      data: { updatedAt: new Date() },
+    });
+    // Just-edited notes are not snapshotted yet (edits not quiet)...
+    await snapshotSweep(Date.now());
+    expect(await countFor(ids.cake!)).toBe(0);
+    // ...but a minute later they are, exactly once.
+    const later = Date.now() + 60_000;
+    await snapshotSweep(later);
+    await snapshotSweep(later);
+    expect(await countFor(ids.cake!)).toBe(1);
+
+    const list = (await (await api(`/documents/${ids.cake}/versions`)).json())
+      .data;
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ kind: "auto" });
+    expect(list[0].preview).toContain("Bake the chocolate cake");
+    expect(list[0].wordCount).toBeGreaterThan(5);
+
+    const one = (
+      await (await api(`/documents/${ids.cake}/versions/${list[0].id}`)).json()
+    ).data;
+    expect(Buffer.from(one.state, "base64").length).toBeGreaterThan(10);
+
+    const manual = await api(`/documents/${ids.cake}/versions`, {
+      method: "POST",
+    });
+    expect(manual.status).toBe(201);
+    expect(
+      (await (await api(`/documents/${ids.cake}/versions`)).json()).data,
+    ).toHaveLength(2);
+
+    expect(
+      (await api(`/documents/${ids.cake}/versions`, {}, otherToken)).status,
+    ).toBe(403);
+    expect(
+      (await api(`/documents/${ids.linking}/versions/${list[0].id}`)).status,
+    ).toBe(404); // wrong doc
+    await prisma.docVersion.deleteMany({
+      where: { docId: { in: Object.values(ids) } },
+    });
+  });
+
   it("clipper blocks private/loopback URLs (SSRF)", async () => {
     for (const url of [
       "http://127.0.0.1:8000/",

@@ -3,6 +3,7 @@ import { prisma } from "@repo/db";
 import { chunkText } from "./chunker.js";
 import { embedWithFallback, preferredEmbedder } from "./embedder.js";
 import { extractPlainText } from "./text.js";
+import { snapshotSweep } from "./versions.js";
 
 const hashOf = (s: string) => createHash("sha1").update(s).digest("hex");
 
@@ -137,6 +138,9 @@ export function startIndexer(idleMs = 15_000, burstMs = 400): void {
     let next = idleMs;
     try {
       const n = await sweepIndex(25);
+      await snapshotSweep().catch((e) =>
+        console.error("[versions] sweep error:", (e as Error).message),
+      );
       if (n > 0) next = burstMs;
     } catch (e) {
       console.error("[index] sweep error:", (e as Error).message);

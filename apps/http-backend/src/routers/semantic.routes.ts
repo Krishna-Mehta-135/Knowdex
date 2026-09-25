@@ -7,7 +7,10 @@ import {
   deleteAttachment,
   downloadAttachment,
   getIndexStatus,
+  createVersion,
   getRelated,
+  getVersion,
+  listVersions,
   getUnlinkedMentions,
   getWorkspaceGraph,
   linkPreview,
@@ -25,6 +28,9 @@ semanticRouter.post("/workspaces/:workspaceId/ask", askWorkspace);
 
 semanticRouter.get("/documents/:docId/related", getRelated);
 semanticRouter.get("/documents/:docId/unlinked-mentions", getUnlinkedMentions);
+semanticRouter.get("/documents/:docId/versions", listVersions);
+semanticRouter.post("/documents/:docId/versions", createVersion);
+semanticRouter.get("/documents/:docId/versions/:versionId", getVersion);
 
 semanticRouter.post(
   "/attachments",

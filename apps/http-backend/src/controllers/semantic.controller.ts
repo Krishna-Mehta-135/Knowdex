@@ -20,6 +20,7 @@ import {
   UnsafeUrlError,
 } from "../semantic/safe-fetch.js";
 import { htmlToMarkdown } from "../semantic/clip.js";
+import { snapshotDocument } from "../semantic/versions.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const fail = (res: Response, code: number, msg: string) =>
@@ -607,3 +608,59 @@ export const linkPreview = asyncHandler(async (req: Request, res: Response) => {
     return fail(res, 502, `Could not fetch page: ${(e as Error).message}`);
   }
 });
+
+// ─── Version history ─────────────────────────────────────────────────────────
+
+export const listVersions = asyncHandler(
+  async (req: Request, res: Response) => {
+    const content = await requireDoc(req, res);
+    if (!content) return;
+    const versions = await prisma.docVersion.findMany({
+      where: { docId: content.id },
+      orderBy: { createdAt: "desc" },
+      take: 60,
+      select: {
+        id: true,
+        createdAt: true,
+        wordCount: true,
+        preview: true,
+        kind: true,
+      },
+    });
+    return res.status(200).json(new ApiResponse(200, versions, "Versions"));
+  },
+);
+
+export const getVersion = asyncHandler(async (req: Request, res: Response) => {
+  const content = await requireDoc(req, res);
+  if (!content) return;
+  const id = String(req.params.versionId ?? "");
+  if (!UUID.test(id)) return fail(res, 400, "Invalid versionId");
+  const v = await prisma.docVersion.findFirst({
+    where: { id, docId: content.id },
+  });
+  if (!v) return fail(res, 404, "Version not found");
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        id: v.id,
+        createdAt: v.createdAt,
+        wordCount: v.wordCount,
+        kind: v.kind,
+        state: Buffer.from(v.state).toString("base64"),
+      },
+      "Version",
+    ),
+  );
+});
+
+export const createVersion = asyncHandler(
+  async (req: Request, res: Response) => {
+    const content = await requireDoc(req, res);
+    if (!content) return;
+    const v = await snapshotDocument(content.id, "manual");
+    if (!v) return fail(res, 400, "Nothing to save yet");
+    return res.status(201).json(new ApiResponse(201, v, "Version saved"));
+  },
+);

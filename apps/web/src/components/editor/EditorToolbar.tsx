@@ -16,13 +16,15 @@ import {
   ListOrdered,
   SquareCheck,
   Quote,
+  History,
 } from "lucide-react";
 
 interface ToolbarProps {
   editor?: Editor | null;
+  onOpenHistory?: () => void;
 }
 
-export function EditorToolbar({ editor }: ToolbarProps) {
+export function EditorToolbar({ editor, onOpenHistory }: ToolbarProps) {
   const manager = useSyncManager();
   const { undo, redo, canUndo, canRedo } = useUndoManager(manager.doc);
 
@@ -207,6 +209,17 @@ export function EditorToolbar({ editor }: ToolbarProps) {
           )}
         </div>
       ))}
+      {onOpenHistory && (
+        <button
+          onClick={onOpenHistory}
+          aria-label="Version history"
+          title="Version history"
+          className="ml-auto flex items-center gap-1.5 rounded border border-transparent px-2.5 py-1.5 text-xs text-white/70 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--sb-accent))]"
+        >
+          <History size={16} />{" "}
+          <span className="hidden sm:inline">History</span>
+        </button>
+      )}
     </div>
   );
 }
