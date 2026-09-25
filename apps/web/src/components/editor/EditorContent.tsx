@@ -7,6 +7,7 @@ import { useDocument } from "@/lib/sync/useDocument";
 import { EditorTitle } from "./EditorTitle";
 import { BacklinksPanel } from "./BacklinksPanel";
 import { DocumentTagsBar } from "./DocumentTagsBar";
+import { RelatedPanel } from "./RelatedPanel";
 
 interface EditorContentProps {
   editor: Editor | null;
@@ -27,6 +28,8 @@ export function EditorContent({ editor }: EditorContentProps) {
         </div>
 
         <BacklinksPanel docId={docId} />
+
+        <RelatedPanel docId={docId} />
 
         <div className="h-32" />
       </div>

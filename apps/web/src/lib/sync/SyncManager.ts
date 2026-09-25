@@ -18,6 +18,8 @@ export class SyncManager {
   private status: ConnectionStatus = "connecting";
   private syncComplete = false;
   private destroyed = false;
+  /** Bumped by every init()/destroy() so stale async inits can bail out. */
+  private lifecycle = 0;
 
   // Reconnect
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -54,23 +56,21 @@ export class SyncManager {
   }
 
   async init(): Promise<void> {
+    const gen = ++this.lifecycle;
     // 1. Restore from IndexedDB before connecting
     const saved = await db.getDocument(this.docId);
+    // A destroy()/newer init() happened while we awaited: this run is stale.
+    if (gen !== this.lifecycle) return;
     if (saved) {
       Y.applyUpdate(this.doc, saved.state);
     }
 
     // 2. Listen to local changes
-    this.doc.on("update", (update: Uint8Array, origin: unknown) => {
-      if (origin === "remote") return;
-
-      db.addPendingUpdate(this.docId, update);
-      this.scheduleSnapshot();
-
-      if (this.syncComplete && this.ws?.readyState === WebSocket.OPEN) {
-        this.queueOutgoingUpdate(update);
-      }
-    });
+    // (init() may run again after destroy() — React StrictMode remounts effects
+    // in development — so this manager must be re-initialisable.)
+    this.destroyed = false;
+    this.doc.off("update", this.onLocalUpdate);
+    this.doc.on("update", this.onLocalUpdate);
 
     // 3. Network events
     if (typeof window !== "undefined") {
@@ -290,11 +290,23 @@ export class SyncManager {
     this.statusListeners.forEach((fn) => fn(s));
   }
 
+  private onLocalUpdate = (update: Uint8Array, origin: unknown): void => {
+    if (origin === "remote") return;
+
+    db.addPendingUpdate(this.docId, update);
+    this.scheduleSnapshot();
+
+    if (this.syncComplete && this.ws?.readyState === WebSocket.OPEN) {
+      this.queueOutgoingUpdate(update);
+    }
+  };
+
   private onOnline = () => {
     if (!this.destroyed) this.connect();
   };
 
   destroy(): void {
+    this.lifecycle++;
     this.destroyed = true;
     if (typeof window !== "undefined") {
       window.removeEventListener("online", this.onOnline);
@@ -307,7 +319,10 @@ export class SyncManager {
     }
     this.flushOutgoingBatch();
     this.ws?.close();
-    this.doc.destroy();
+    this.ws = null;
+    this.doc.off("update", this.onLocalUpdate);
+    // The Y.Doc is intentionally not destroyed: init() can run again on the
+    // same instance (StrictMode) and the doc is garbage-collected with it.
     this.statusListeners.clear();
     this.messageListeners.clear();
   }

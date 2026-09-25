@@ -515,11 +515,15 @@ export const downloadAttachment = asyncHandler(
     );
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Cache-Control", "private, max-age=3600");
-    // Never let an uploaded file execute script in our origin.
-    res.setHeader(
-      "Content-Security-Policy",
-      "sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:",
-    );
+    // Uploaded files must never execute script in our origin. PDFs are shown by
+    // the browser's viewer (which a `sandbox` CSP would disable), everything else
+    // is served fully sandboxed.
+    if (att.mime !== "application/pdf") {
+      res.setHeader(
+        "Content-Security-Policy",
+        "sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:",
+      );
+    }
     return res.status(200).end(Buffer.from(att.data));
   },
 );

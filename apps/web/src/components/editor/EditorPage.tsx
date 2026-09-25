@@ -1,7 +1,9 @@
 "use client";
 
 import { useDocument } from "@/lib/sync/useDocument";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { Editor } from "@tiptap/core";
+import { toast } from "sonner";
 import { useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Collaboration from "@tiptap/extension-collaboration";
@@ -13,6 +15,28 @@ import Link from "@tiptap/extension-link";
 import CharacterCount from "@tiptap/extension-character-count";
 import { Markdown } from "tiptap-markdown";
 import { WikiLink } from "./extensions/WikiLink";
+import { Callout } from "./extensions/Callout";
+import { FileAttachment } from "./extensions/PdfAttachment";
+import { Bookmark } from "./extensions/Bookmark";
+import Image from "@tiptap/extension-image";
+import {
+  Table,
+  TableRow,
+  TableCell,
+  TableHeader,
+} from "@tiptap/extension-table";
+import Highlight from "@tiptap/extension-highlight";
+import { SlashCommand, type SlashState } from "./slash/SlashCommand";
+import { SlashMenu } from "./slash/SlashMenu";
+import type { SlashItem } from "./slash/slashItems";
+import { linkifyWikiText } from "@/lib/editor/linkifyWiki";
+import {
+  attachmentUrl,
+  FILE_ACCEPT,
+  IMAGE_MIME,
+  uploadFile,
+} from "@/lib/kx/upload";
+import { kx } from "@/lib/kx/api";
 import * as awarenessProtocol from "y-protocols/awareness";
 import * as Y from "yjs";
 import { useAuth } from "@/lib/auth/useAuth";
@@ -65,6 +89,22 @@ function EditorContentWrapper({
   const { addRecent } = useRecentDocs();
   const linkSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Latest values live in refs so the editor is NOT rebuilt (and the collab
+  // binding torn down) every time the documents list or callbacks change.
+  const documentsRef = useRef(documents);
+  documentsRef.current = documents;
+  const updateLinksRef = useRef(updateLinks);
+  updateLinksRef.current = updateLinks;
+  const editorRef = useRef<Editor | null>(null);
+
+  const [slash, setSlash] = useState<SlashState | null>(null);
+  const [urlPrompt, setUrlPrompt] = useState<{
+    onSubmit: (u: string) => Promise<void>;
+    onCancel: () => void;
+  } | null>(null);
+  const slashKeyRef = useRef<(e: KeyboardEvent) => boolean>(() => false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   // Register this document as recently visited
   useEffect(() => {
     if (docId) addRecent(docId);
@@ -76,96 +116,296 @@ function EditorContentWrapper({
     };
   }, []);
 
+  /** Upload files and insert them: images inline, everything else as a file card. */
+  const handleFiles = useCallback(
+    async (files: File[]) => {
+      const ed = editorRef.current;
+      if (!ed || files.length === 0) return;
+      for (const file of files) {
+        const p = uploadFile(docId, file);
+        toast.promise(p, {
+          loading: `Uploading ${file.name}…`,
+          success: `${file.name} added`,
+          error: (e: Error) => e.message,
+        });
+        try {
+          const up = await p;
+          if (IMAGE_MIME.test(up.mime)) {
+            ed.chain()
+              .focus()
+              .setImage({ src: attachmentUrl(up.id), alt: up.name })
+              .run();
+          } else {
+            ed.chain()
+              .focus()
+              .setFileAttachment({
+                id: up.id,
+                name: up.name,
+                size: up.size,
+                mime: up.mime,
+              })
+              .run();
+          }
+        } catch {
+          /* toast already shown */
+        }
+      }
+    },
+    [docId],
+  );
+  const handleFilesRef = useRef(handleFiles);
+  handleFilesRef.current = handleFiles;
+
+  const runSlashItem = useCallback(
+    (item: SlashItem, ed: Editor, range: { from: number; to: number }) => {
+      const chain = () => ed.chain().focus().deleteRange(range);
+      const a = item.action;
+      if (a.type === "upload") {
+        chain().run();
+        if (fileInputRef.current) {
+          fileInputRef.current.accept =
+            a.kind === "image" ? "image/*" : FILE_ACCEPT;
+          fileInputRef.current.click();
+        }
+        return;
+      }
+      if (a.type === "bookmark") {
+        chain().run();
+        setUrlPrompt({
+          onCancel: () => setUrlPrompt(null),
+          onSubmit: async (raw) => {
+            const url = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+            let meta: { title?: string; description?: string; image?: string } =
+              {};
+            try {
+              meta = await kx(`link-preview`, {
+                method: "POST",
+                json: { url },
+              });
+            } catch {
+              toast.error(
+                "Couldn't fetch a preview; inserted a plain link card.",
+              );
+            }
+            ed.chain()
+              .focus()
+              .setBookmark({
+                url,
+                title: meta.title ?? "",
+                description: meta.description ?? "",
+                image: meta.image ?? "",
+              })
+              .run();
+            setUrlPrompt(null);
+          },
+        });
+        return;
+      }
+      switch (a.run) {
+        case "paragraph":
+          return void chain().setParagraph().run();
+        case "h1":
+          return void chain().setHeading({ level: 1 }).run();
+        case "h2":
+          return void chain().setHeading({ level: 2 }).run();
+        case "h3":
+          return void chain().setHeading({ level: 3 }).run();
+        case "bullet":
+          return void chain().toggleBulletList().run();
+        case "ordered":
+          return void chain().toggleOrderedList().run();
+        case "todo":
+          return void chain().toggleTaskList().run();
+        case "quote":
+          return void chain().toggleBlockquote().run();
+        case "code":
+          return void chain().toggleCodeBlock().run();
+        case "divider":
+          return void chain().setHorizontalRule().run();
+        case "table":
+          return void chain()
+            .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
+            .run();
+        case "callout-info":
+          return void chain().setCallout("info").run();
+        case "callout-warning":
+          return void chain().setCallout("warning").run();
+        case "callout-success":
+          return void chain().setCallout("success").run();
+        case "callout-danger":
+          return void chain().setCallout("danger").run();
+        case "wikilink":
+          return void chain().insertContent("[[").run();
+      }
+    },
+    [],
+  );
+
+  const scheduleLinkSync = useCallback(() => {
+    if (linkSaveTimerRef.current) clearTimeout(linkSaveTimerRef.current);
+    linkSaveTimerRef.current = setTimeout(() => {
+      const ed = editorRef.current;
+      if (!ed || ed.isDestroyed) return;
+      // Walk the doc only when typing pauses, not on every keystroke.
+      const titles = new Set<string>();
+      ed.state.doc.descendants((node) => {
+        if (
+          node.type.name === "wikiLink" &&
+          typeof node.attrs.title === "string"
+        )
+          titles.add(node.attrs.title);
+      });
+      const ids = Array.from(titles)
+        .map(
+          (t) =>
+            documentsRef.current.find(
+              (x) => (x.title ?? "").toLowerCase() === t.toLowerCase(),
+            )?.id,
+        )
+        .filter(Boolean) as string[];
+      void updateLinksRef.current(ids).then(() => {
+        window.dispatchEvent(
+          new CustomEvent("knowdex:backlinks-changed", {
+            detail: { toDocIds: ids },
+          }),
+        );
+      });
+    }, 450);
+  }, []);
+
+  const extensions = useMemo(
+    () => [
+      StarterKit.configure({
+        undoRedo: false, // In this version, it's undoRedo instead of history
+        link: false, // Disable built-in link to use our custom configured one
+      }),
+      Collaboration.configure({ document: doc, field: "content" }),
+      ...(awareness
+        ? [
+            CollaborationCursor.configure({
+              provider: { awareness, document: doc },
+              user: {
+                name: user.name?.trim() ? user.name : "You",
+                color: getCursorColor(user.id),
+              },
+            }),
+          ]
+        : []),
+      Placeholder.configure({
+        placeholder: ({ node }) =>
+          node.type.name === "heading"
+            ? "Heading..."
+            : "Write something, type / for blocks, or press Space to use AI...",
+        showOnlyCurrent: true,
+      }),
+      CharacterCount.configure({ limit: 50000 }),
+      TaskList,
+      TaskItem.configure({ nested: true }),
+      Link.configure({
+        openOnClick: false,
+        HTMLAttributes: { rel: "noopener noreferrer", target: "_blank" },
+      }),
+      Markdown.configure({
+        html: false,
+        tightLists: true,
+        linkify: true,
+        transformPastedText: true,
+      }),
+      WikiLink,
+      Callout,
+      FileAttachment,
+      Bookmark,
+      Highlight,
+      Image.configure({ allowBase64: false }),
+      Table.configure({ resizable: false }),
+      TableRow,
+      TableHeader,
+      TableCell,
+      SlashCommand.configure({
+        onState: setSlash,
+        onKey: (e) => slashKeyRef.current(e),
+        runItem: runSlashItem,
+      }),
+    ],
+    [doc, awareness, user.id, user.name, runSlashItem],
+  );
+
   const editor = useEditor(
     {
-      extensions: [
-        StarterKit.configure({
-          undoRedo: false, // In this version, it's undoRedo instead of history
-          link: false, // Disable built-in link to use our custom configured one
-        }),
-        Collaboration.configure({ document: doc, field: "content" }),
-        ...(awareness
-          ? [
-              CollaborationCursor.configure({
-                provider: { awareness, document: doc },
-                user: {
-                  name: user.name?.trim() ? user.name : "You",
-                  color: getCursorColor(user.id),
-                },
-              }),
-            ]
-          : []),
-        Placeholder.configure({
-          placeholder: ({ node }) =>
-            node.type.name === "heading"
-              ? "Heading..."
-              : "Write something, or press Space to use AI...",
-          showOnlyCurrent: true,
-        }),
-        CharacterCount.configure({ limit: 50000 }),
-        TaskList,
-        TaskItem.configure({ nested: true }),
-        Link.configure({
-          openOnClick: false,
-          HTMLAttributes: { rel: "noopener noreferrer", target: "_blank" },
-        }),
-        Markdown.configure({
-          html: false,
-          tightLists: true,
-          linkify: true, // Now we can keep this since StarterKit link is disabled
-          transformPastedText: true,
-        }),
-        WikiLink,
-      ],
+      extensions,
       editorProps: {
         attributes: {
           class:
             "prose prose-invert prose-sm sm:prose-base lg:prose-lg focus:outline-none max-w-none min-h-[500px] text-[15px] leading-relaxed text-[hsl(var(--sb-text))]",
           spellcheck: "true",
         },
+        handlePaste: (_view, event) => {
+          const files = Array.from(event.clipboardData?.files ?? []);
+          if (files.length === 0) return false;
+          event.preventDefault();
+          void handleFilesRef.current(files);
+          return true;
+        },
+        handleDrop: (_view, event) => {
+          const files = Array.from(
+            (event as DragEvent).dataTransfer?.files ?? [],
+          );
+          if (files.length === 0) return false;
+          event.preventDefault();
+          void handleFilesRef.current(files);
+          return true;
+        },
       },
       immediatelyRender: false,
-      onUpdate: ({ editor }) => {
-        const json = editor.getJSON();
-        const titles = new Set<string>();
-
-        const extractTitles = (node: Record<string, unknown>) => {
-          if (
-            node.type === "wikiLink" &&
-            typeof (node.attrs as Record<string, unknown>)?.title === "string"
-          ) {
-            titles.add((node.attrs as Record<string, unknown>).title as string);
-          }
-          if (Array.isArray(node.content)) {
-            node.content.forEach(extractTitles);
-          }
-        };
-
-        extractTitles(json as Record<string, unknown>);
-
-        const ids = Array.from(titles)
-          .map((title) => {
-            const d = documents.find(
-              (x) => (x.title ?? "").toLowerCase() === title.toLowerCase(),
-            );
-            return d?.id;
-          })
-          .filter(Boolean) as string[];
-
-        if (linkSaveTimerRef.current) clearTimeout(linkSaveTimerRef.current);
-        linkSaveTimerRef.current = setTimeout(() => {
-          void updateLinks(ids).then(() => {
-            window.dispatchEvent(
-              new CustomEvent("knowdex:backlinks-changed", {
-                detail: { toDocIds: ids },
-              }),
-            );
-          });
-        }, 450);
-      },
+      onUpdate: scheduleLinkSync,
     },
-    [doc, awareness, documents, updateLinks],
+    [extensions],
   );
+  editorRef.current = editor;
+
+  // Insert [[link]] requests from the Related panel / graph suggestions.
+  useEffect(() => {
+    function onInsertWiki(e: Event) {
+      const title = (e as CustomEvent<{ title?: string }>).detail?.title;
+      const ed = editorRef.current;
+      if (!ed || !title) return;
+      ed.chain()
+        .focus("end")
+        .insertContent({
+          type: "paragraph",
+          content: [
+            { type: "text", text: "Related: " },
+            { type: "wikiLink", attrs: { title } },
+          ],
+        })
+        .run();
+    }
+    window.addEventListener("knowdex:insert-wikilink", onInsertWiki);
+    return () =>
+      window.removeEventListener("knowdex:insert-wikilink", onInsertWiki);
+  }, []);
+
+  // Imported markdown may contain literal [[Title]]; convert once the content lands.
+  useEffect(() => {
+    if (!editor) return;
+    const key = `knowdex:pending-import:${docId}`;
+    let md: string | null = null;
+    try {
+      md = sessionStorage.getItem(key);
+    } catch {
+      /* storage unavailable */
+    }
+    if (!md) return;
+    try {
+      sessionStorage.removeItem(key);
+    } catch {
+      /* ignore */
+    }
+    if (editor.isEmpty) {
+      editor.commands.setContent(md, { emitUpdate: true });
+      linkifyWikiText(editor);
+    }
+  }, [editor, docId]);
 
   useEffect(() => {
     if (!editor) return;
@@ -220,6 +460,23 @@ function EditorContentWrapper({
         </div>
 
         <WikiLinkAutocomplete editor={editor} />
+        <SlashMenu
+          state={slash}
+          urlPrompt={urlPrompt}
+          keyHandler={slashKeyRef}
+        />
+        <input
+          ref={fileInputRef}
+          type="file"
+          hidden
+          multiple
+          accept={FILE_ACCEPT}
+          onChange={(e) => {
+            const files = Array.from(e.target.files ?? []);
+            e.target.value = "";
+            void handleFiles(files);
+          }}
+        />
 
         <AIPanel editor={editor} />
       </div>

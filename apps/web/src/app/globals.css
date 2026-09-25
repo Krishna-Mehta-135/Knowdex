@@ -525,3 +525,81 @@ svg {
   background: rgba(255, 255, 255, 0.12);
   border-radius: 10px;
 }
+
+/* ── Editor blocks: tables, callouts, images, highlight ─────────────────── */
+.ProseMirror table {
+  border-collapse: collapse;
+  margin: 1.25rem 0;
+  width: 100%;
+  table-layout: fixed;
+  overflow: hidden;
+}
+.ProseMirror th,
+.ProseMirror td {
+  border: 1px solid hsl(var(--sb-border-hover));
+  padding: 0.5rem 0.75rem;
+  vertical-align: top;
+  position: relative;
+  min-width: 3rem;
+}
+.ProseMirror th {
+  background: hsl(var(--sb-bg-hover));
+  font-weight: 600;
+  text-align: left;
+}
+.ProseMirror td > p,
+.ProseMirror th > p {
+  margin: 0;
+}
+.ProseMirror .selectedCell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: hsla(var(--sb-accent) / 0.18);
+  pointer-events: none;
+}
+.ProseMirror div[data-callout] {
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  border: 1px solid hsl(var(--sb-border-hover));
+  border-left-width: 4px;
+  background: hsla(var(--sb-accent) / 0.08);
+  border-left-color: hsl(var(--sb-accent));
+}
+.ProseMirror div[data-callout][data-kind="warning"] {
+  background: hsla(38 92% 55% / 0.1);
+  border-left-color: hsl(38 92% 55%);
+}
+.ProseMirror div[data-callout][data-kind="success"] {
+  background: hsla(150 80% 45% / 0.1);
+  border-left-color: hsl(150 80% 45%);
+}
+.ProseMirror div[data-callout][data-kind="danger"] {
+  background: hsla(350 85% 60% / 0.1);
+  border-left-color: hsl(350 85% 60%);
+}
+.ProseMirror div[data-callout] > :first-child {
+  margin-top: 0;
+}
+.ProseMirror div[data-callout] > :last-child {
+  margin-bottom: 0;
+}
+.ProseMirror img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.75rem;
+  margin: 1rem 0;
+}
+.ProseMirror img.ProseMirror-selectednode {
+  outline: 2px solid hsl(var(--sb-accent));
+}
+.ProseMirror mark {
+  background: hsla(50 100% 55% / 0.3);
+  color: inherit;
+  border-radius: 0.2rem;
+  padding: 0 0.15rem;
+}
+.ProseMirror hr {
+  border-color: hsl(var(--sb-border-hover));
+}
