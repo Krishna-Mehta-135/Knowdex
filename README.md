@@ -163,3 +163,44 @@ graph LR
 ```
 
 Production environments utilize independently deployed artifacts, allowing the WebSocket nodes to scale autonomously from the HTTP cluster in response to high concurrency scenarios.
+
+---
+
+## Product features
+
+| Feature                         | What it does                                                                                                                                                                                                        | Where                                                    |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| **Knowledge graph**             | Canvas force-graph of real `[[links]]`, plus dashed _ghost links_ between similar-but-unlinked notes, a suggestions panel, timeline playback, search highlight. Idle cost is ~0 (the simulation stops when cooled). | `apps/web/src/components/graph`, `lib/graph/forceSim.ts` |
+| **Ask your notes**              | Streaming answers grounded in the workspace's notes and PDFs, with clickable numbered citations. Falls back to matching passages if no Gemini key is available.                                                     | `apps/http-backend/src/semantic/ask.ts`, `/ask`          |
+| **Semantic index**              | Notes/PDFs are chunked and embedded in the background (Gemini `gemini-embedding-001`, deterministic local fallback). Embeddings live in plain Postgres `float8[]` — no pgvector needed.                             | `apps/http-backend/src/semantic`                         |
+| **Command palette**             | ⌘K: title + meaning search, actions, "Ask: …".                                                                                                                                                                      | `components/shell/CommandPalette.tsx`                    |
+| **AI as a collaborator**        | While the AI writes, every collaborator sees who asked and the text streaming in (over Yjs awareness). The requester reviews and accepts/discards.                                                                  | `components/ai`, `lib/sync/useAIPresence.ts`             |
+| **Blocks**                      | `/` menu: headings, lists, todo, table, callout, code, image, PDF/file, web bookmark, `[[link]]`. Paste/drop files to upload.                                                                                       | `components/editor/slash`                                |
+| **Import & clip**               | Markdown / Obsidian vault / Notion export (zip) → notes with tags, folders and real backlinks; clip any public web page.                                                                                            | `/import`, `apps/http-backend/src/import`                |
+| **Version history**             | Automatic snapshots, preview, and non-destructive restore.                                                                                                                                                          | `components/editor/VersionHistory.tsx`                   |
+| **Related & unlinked mentions** | Under every note: related-by-meaning notes and plain-text mentions, one click from a real link.                                                                                                                     | `components/editor/RelatedPanel.tsx`                     |
+
+### Local development without cloud keys
+
+```bash
+# throwaway Postgres + Redis on non-default ports (never point tests at a shared DB)
+docker run -d --name kx-dev-pg -e POSTGRES_PASSWORD=dev -e POSTGRES_DB=knowdex_dev -p 5544:5432 postgres:15-alpine
+docker run -d --name kx-dev-redis -p 6390:6379 redis:7-alpine
+
+export DATABASE_URL=postgresql://postgres:dev@127.0.0.1:5544/knowdex_dev
+export REDIS_URL=redis://127.0.0.1:6390
+pnpm --filter @repo/db exec prisma migrate deploy
+AI_MOCK=1 pnpm dev            # AI_MOCK=1 streams a canned answer instead of calling Gemini
+
+# optional: an interlinked demo workspace (refuses non-local databases)
+cd apps/http-backend && npx tsx scripts/seed-demo.ts you@example.com
+```
+
+### Tests
+
+```bash
+pnpm turbo test                                # unit tests
+TEST_DATABASE_URL=$DATABASE_URL pnpm turbo test  # + real-database API integration tests
+```
+
+Integration tests create and delete their own rows but **must not** be pointed at a shared or production database.
