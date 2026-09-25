@@ -1,10 +1,29 @@
 name: Deploy
 
-# Push to main triggers a build+push to GHCR.
-# Images are tagged with both `latest` and the commit SHA for immutable rollbacks.
+# Push to main → CI → build images to GHCR → deploy to the shared Azure App VM
+# → Vercel.
+#
+# The Knowdex backend runs on the same Azure App VM as CanvasSync, in
+# /opt/knowdex (see docker-compose.prod.yml). CanvasSync's Caddy terminates
+# HTTPS for api.knowdex.me / ws.knowdex.me and proxies over the `edge` network.
+# Postgres (database `knowdex_db`) and Redis are shared with CanvasSync.
+#
+# Required GitHub variables:
+#   APP_VM_IP            — App VM public IP
+#   DATA_VM_PRIVATE_IP   — Data VM private IP (Redis)
+#   API_HEALTH_URL       — https://api.knowdex.me/health
+#
+# Required GitHub secrets:
+#   VM_USER, VM_SSH_KEY  — same values as in the CanvasSync repo
+#   DATABASE_URL         — Azure Postgres …/knowdex_db?sslmode=require
+#   REDIS_PASS           — same value as in the CanvasSync repo
+#   JWT_SECRET, GEMINI_API_KEY,
+#   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GH_CLIENT_ID, GH_CLIENT_SECRET,
+#   VERCEL_DEPLOY_HOOK
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 # One deploy at a time; cancel any in-flight run when a new commit lands.
 concurrency:
@@ -64,14 +83,14 @@ jobs:
             type=sha,prefix=sha-,format=short
             type=raw,value=latest,enable={{is_default_branch}}
 
-      # For the web service, NEXT_PUBLIC_* vars must be baked in at build time.
-      # Safari requires wss:// (SSL) so we always use the production domain here.
+      # The App VM is x86, so amd64 images are enough.
       - name: Build and push ${{ matrix.service }}
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ${{ matrix.dockerfile }}
           target: runner
+          platforms: linux/amd64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -80,37 +99,20 @@ jobs:
           cache-to: type=gha,scope=${{ matrix.service }},mode=max
           provenance: false   # keeps manifest lists simple for standard registries
 
-  # ── Deploy to both GCP VMs in parallel ──────────────────────────────────────
+  # ── Deploy to the shared Azure App VM ───────────────────────────────────────
   deploy:
-    name: Deploy to ${{ matrix.vm_ip }}
+    name: Deploy to Azure App VM
     runs-on: ubuntu-latest
     needs: build-and-push
-
-    strategy:
-      fail-fast: false  # continue deploying to the second VM even if the first fails
-      matrix:
-        # Simplified and clean
-        vm_ip: [ "${{ vars.VM_1_IP }}", "${{ vars.VM_2_IP }}" ]
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Ensure directory exists on VM
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ matrix.vm_ip }}
-          username: ${{ secrets.VM_USER }}
-          key: ${{ secrets.VM_SSH_KEY }}
-          script: |
-            set -euo pipefail
-            sudo mkdir -p /opt/knowdex
-            sudo chown $USER:$USER /opt/knowdex
-
       - name: Copy docker-compose to VM
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: ${{ matrix.vm_ip }}
+          host: ${{ vars.APP_VM_IP }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
           source: "docker-compose.prod.yml"
@@ -119,39 +121,21 @@ jobs:
       - name: SSH deploy to VM
         uses: appleboy/ssh-action@v1
         with:
-          host: ${{ matrix.vm_ip }}
+          host: ${{ vars.APP_VM_IP }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
           script: |
             set -euo pipefail
             cd /opt/knowdex
 
-            # ── Cloud SQL Auth Proxy ──────────────────────────────────────────
-            if ! command -v cloud-sql-proxy &> /dev/null; then
-              sudo curl -o /usr/local/bin/cloud-sql-proxy https://storage.googleapis.com/cloud-sql-connectors/cloud-sql-proxy/v2.15.2/cloud-sql-proxy.linux.amd64
-              sudo chmod +x /usr/local/bin/cloud-sql-proxy
-            fi
-            if ! systemctl is-active --quiet cloud-sql-proxy; then
-              sudo systemctl start cloud-sql-proxy || true
-            fi
-            # ─────────────────────────────────────────────────────────────────
-
-            # Write the CA cert from secret
-            mkdir -p certs
-            echo "${{ secrets.DB_SSL_CA_CERT }}" > certs/server-ca.pem
-
             # Force the repo name to lowercase for the pull
             LOWER_REPO=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
 
             # Write runtime env from GitHub Secrets so no secrets live in the image
             cat > .env <<EOF
-            NODE_ENV=production
-            NODE_EXTRA_CA_CERTS=/opt/knowdex/certs/server-ca.pem
-            # Use the lowercase version here!
             GITHUB_REPO=$LOWER_REPO
             DATABASE_URL=${{ secrets.DATABASE_URL }}
-            REDIS_HOST=10.190.0.4
-            REDIS_PORT=6379
+            REDIS_URL=redis://:${{ secrets.REDIS_PASS }}@${{ vars.DATA_VM_PRIVATE_IP }}:6379
             JWT_SECRET=${{ secrets.JWT_SECRET }}
             GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
             FRONTEND_URL=https://knowdex.me
@@ -162,14 +146,17 @@ jobs:
             GH_CLIENT_SECRET=${{ secrets.GH_CLIENT_SECRET }}
             GH_CALLBACK_URL=https://api.knowdex.me/api/v1/auth/github/callback
             EOF
+            chmod 600 .env
+
+            docker network inspect edge >/dev/null 2>&1 || docker network create edge
 
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             docker compose -f docker-compose.prod.yml pull
+            # http-backend applies Prisma migrations on start (see its Dockerfile CMD).
             docker compose -f docker-compose.prod.yml up -d --remove-orphans
             docker image prune -f
 
   # ── Wait for backend health, then deploy Vercel ─────────────────────────────
-  # Runs AFTER both GCP VMs have been deployed so Vercel always goes live last.
   # Prerequisites:
   #   1. Disable "Auto Deploy" in Vercel project settings (Settings → Git → Auto Deploy → off)
   #   2. Create a Deploy Hook (Settings → Git → Deploy Hooks) and store the URL
@@ -177,22 +164,21 @@ jobs:
   deploy-vercel:
     name: Deploy frontend to Vercel
     runs-on: ubuntu-latest
-    needs: deploy   # blocks until all GCP VM deploy matrix jobs finish
+    needs: deploy
 
     steps:
-      - name: Wait for GCP backend health
+      - name: Wait for backend health
         run: |
-          for IP in "${{ vars.VM_1_IP }}" "${{ vars.VM_2_IP }}"; do
-            echo "Waiting for http-backend on $IP..."
-            for i in $(seq 1 20); do
-              if curl -sf --max-time 5 "http://$IP:3001/health" > /dev/null 2>&1; then
-                echo "  ✓ $IP is healthy"
-                break
-              fi
-              echo "  attempt $i/20 — retrying in 10s"
-              sleep 10
-            done
+          for i in $(seq 1 20); do
+            if curl -sf --max-time 10 "${{ vars.API_HEALTH_URL }}" > /dev/null 2>&1; then
+              echo "✓ backend is healthy"
+              exit 0
+            fi
+            echo "attempt $i/20 — retrying in 10s"
+            sleep 10
           done
+          echo "backend never became healthy"
+          exit 1
 
       - name: Trigger Vercel deploy hook
         run: |

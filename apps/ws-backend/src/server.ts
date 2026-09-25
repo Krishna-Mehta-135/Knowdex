@@ -9,7 +9,8 @@ import { DocumentManager } from "./document-manager.js";
 import { PrismaRepository, PersistenceService, prisma } from "@repo/db";
 import { GeminiAIService } from "./ai-service.js";
 
-const PORT = process.env.WS_PORT ? parseInt(process.env.WS_PORT, 10) : 8080;
+// PORT is injected by Heroku; WS_PORT is used by docker-compose and local dev.
+const PORT = parseInt(process.env.PORT ?? process.env.WS_PORT ?? "8080", 10);
 const HEARTBEAT_INTERVAL = 30_000;
 const HEARTBEAT_TIMEOUT = 10_000;
 const HEARTBEAT_SCAN_INTERVAL = 1_000;

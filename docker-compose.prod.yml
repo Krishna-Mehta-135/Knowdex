@@ -1,25 +1,25 @@
-# docker-compose.prod.yml — GCP production stack
+# docker-compose.prod.yml — Knowdex backend on the shared Azure App VM
 # ─────────────────────────────────────────────────────────────────────────────
-# NO postgres or redis containers here.
-# Database  → Cloud SQL (private IP via DATABASE_URL)
-# Cache/PubSub → Cloud Memorystore for Redis (private IP via REDIS_HOST)
+# Runs in /opt/knowdex next to the CanvasSync stack (/opt/canvas). No ports are
+# published: CanvasSync's Caddy reaches these containers over the external
+# `edge` network and terminates HTTPS for api.knowdex.me / ws.knowdex.me.
 #
-# Secrets are injected at runtime from /opt/knowdex/.env on the VM.
-# The CI/CD deploy step writes that file via SSH before running this compose.
+# Database → Azure Postgres Flexible Server (database `knowdex_db`)
+# Redis    → shared Redis container on the Data VM (ws pub/sub only)
+#
+# The deploy workflow writes /opt/knowdex/.env from GitHub secrets.
+# Service names are prefixed with `knowdex-` so they never collide with
+# CanvasSync's `http-backend` / `ws-backend` names on the shared network.
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
-  http-backend:
+  knowdex-http:
     image: ghcr.io/${GITHUB_REPO:?GITHUB_REPO is required}/http-backend:latest
-    ports:
-      - "8000:8000"
     environment:
       NODE_ENV: production
-      NODE_EXTRA_CA_CERTS: /opt/knowdex/certs/server-ca.pem
-      DB_SSL_CA: /opt/knowdex/certs/server-ca.pem
+      NODE_OPTIONS: --max-old-space-size=192
       HTTP_PORT: 8000
       DATABASE_URL: ${DATABASE_URL:?required}
-      REDIS_URL: ${REDIS_URL:-}
       JWT_SECRET: ${JWT_SECRET:?required}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       FRONTEND_URL: ${FRONTEND_URL:?required}
@@ -29,37 +29,38 @@ services:
       GH_CLIENT_ID: ${GH_CLIENT_ID:-}
       GH_CLIENT_SECRET: ${GH_CLIENT_SECRET:-}
       GH_CALLBACK_URL: ${GH_CALLBACK_URL:-}
-    volumes:
-      - /opt/knowdex/certs:/opt/knowdex/certs:ro
+    networks:
+      - edge
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 20s
+      start_period: 30s
+    mem_limit: 256m
     restart: unless-stopped
 
-  ws-backend:
+  knowdex-ws:
     image: ghcr.io/${GITHUB_REPO:?GITHUB_REPO is required}/ws-backend:latest
-    ports:
-      - "8080:8080"
     environment:
       NODE_ENV: production
-      NODE_EXTRA_CA_CERTS: /opt/knowdex/certs/server-ca.pem
+      NODE_OPTIONS: --max-old-space-size=192
       WS_PORT: 8080
       DATABASE_URL: ${DATABASE_URL:?required}
-      # REDIS_HOST takes priority over REDIS_URL inside the app (keyPrefix: "knowdex:")
-      REDIS_HOST: ${REDIS_HOST:-}
-      REDIS_PORT: ${REDIS_PORT:-6379}
-      REDIS_URL: ${REDIS_URL:-}
+      REDIS_URL: ${REDIS_URL:?required}
       JWT_SECRET: ${JWT_SECRET:?required}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-    volumes:
-      - /opt/knowdex/certs:/opt/knowdex/certs:ro
+    networks:
+      - edge
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 20s
+    mem_limit: 256m
     restart: unless-stopped
+
+networks:
+  edge:
+    external: true

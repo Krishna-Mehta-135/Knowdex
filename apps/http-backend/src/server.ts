@@ -2,7 +2,8 @@ import "./env.js";
 import { app } from "./app.js";
 import connectDB from "./db/index.js";
 
-const port = process.env.HTTP_PORT ? parseInt(process.env.HTTP_PORT, 10) : 8000;
+// PORT is injected by Heroku; HTTP_PORT is used by docker-compose and local dev.
+const port = parseInt(process.env.PORT ?? process.env.HTTP_PORT ?? "8000", 10);
 
 connectDB()
   .then(() => {

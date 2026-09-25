@@ -68,4 +68,6 @@ RUN addgroup --system --gid 1001 nodejs && \
 USER appuser
 
 EXPOSE 8000
-CMD ["sh", "-c", "npx prisma migrate deploy --schema=/app/packages/db/prisma/schema.prisma --config=/app/packages/db/prisma.config.ts && node dist/server.js"]
+# Call the local prisma binary directly: npx may try to write a cache to $HOME,
+# which is not writable on Heroku.
+CMD ["sh", "-c", "./node_modules/.bin/prisma migrate deploy --schema=/app/packages/db/prisma/schema.prisma --config=/app/packages/db/prisma.config.ts && node dist/server.js"]
