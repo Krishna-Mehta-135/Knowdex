@@ -35,6 +35,8 @@ const ACCENT = "hsl(255 85% 68%)";
 const GHOST = "hsl(285 90% 72%)";
 const FILE = "hsl(38 92% 60%)";
 
+const MINI_MAX_NODES = 40;
+
 const radiusOf = (n: GraphNode, mini: boolean) =>
   (mini ? 2.6 : 4) + Math.sqrt(n.degree) * (mini ? 0.9 : 1.6);
 
@@ -117,7 +119,16 @@ export function ForceGraph({
 
   /** Mini mode shows only the active note's neighbourhood. */
   const scope = useMemo(() => {
-    if (!mini || !activeId) return null;
+    if (!mini) return null;
+    // No note open: show only the best-connected notes so the sidebar stays light.
+    if (!activeId) {
+      return new Set(
+        [...data.nodes]
+          .sort((a, b) => b.degree - a.degree)
+          .slice(0, MINI_MAX_NODES)
+          .map((n) => n.id),
+      );
+    }
     const s = new Set<string>([activeId]);
     for (const id of adjacency.get(activeId) ?? []) s.add(id);
     for (const g of data.ghostEdges) {
@@ -125,7 +136,7 @@ export function ForceGraph({
       if (g.b === activeId) s.add(g.a);
     }
     return s;
-  }, [mini, activeId, adjacency, data.ghostEdges]);
+  }, [mini, activeId, adjacency, data.ghostEdges, data.nodes]);
 
   const requestDraw = useCallback(() => {
     dirty.current = true;

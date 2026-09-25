@@ -124,22 +124,34 @@ export async function sweepIndex(limit = 10): Promise<number> {
 }
 
 let timer: NodeJS.Timeout | null = null;
-let running = false;
+let stopped = false;
 
-export function startIndexer(intervalMs = 15_000): void {
-  if (timer) return;
+/**
+ * Background loop: drains stale notes in bursts (so a bulk import is searchable
+ * within seconds) and idles at a slow poll once everything is indexed.
+ */
+export function startIndexer(idleMs = 15_000, burstMs = 400): void {
+  if (timer || process.env.DISABLE_INDEXER === "1") return;
+  stopped = false;
   const tick = async () => {
-    if (running) return;
-    running = true;
+    let next = idleMs;
     try {
-      await sweepIndex();
+      const n = await sweepIndex(25);
+      if (n > 0) next = burstMs;
     } catch (e) {
       console.error("[index] sweep error:", (e as Error).message);
-    } finally {
-      running = false;
+    }
+    if (!stopped) {
+      timer = setTimeout(() => void tick(), next);
+      timer.unref();
     }
   };
-  timer = setInterval(() => void tick(), intervalMs);
+  timer = setTimeout(() => void tick(), 0);
   timer.unref();
-  void tick();
+}
+
+export function stopIndexer(): void {
+  stopped = true;
+  if (timer) clearTimeout(timer);
+  timer = null;
 }
