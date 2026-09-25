@@ -125,7 +125,7 @@ export async function* streamAnswer(
   }
   yield {
     token:
-      "_AI generation is unavailable, so here are the most relevant passages from your notes:_\n\n",
+      "AI generation is unavailable, so here are the most relevant passages from your notes:\n\n",
     mode: "extractive",
   };
   for (const s of sources.slice(0, 4)) {

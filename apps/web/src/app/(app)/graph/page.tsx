@@ -1,4 +1,4 @@
-import { FullPhysicsGraph } from "@/components/shell/FullPhysicsGraph";
+import { GraphView } from "@/components/graph/GraphView";
 import { Network, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 
@@ -9,14 +9,15 @@ export default function GraphPage() {
         <Link
           href="/documents"
           className="text-[hsl(var(--sb-text-faint))] hover:text-white transition-colors"
+          aria-label="Back to documents"
         >
           <ArrowLeft size={16} />
         </Link>
         <Network className="w-4 h-4 mr-2 text-[hsl(var(--sb-accent))]" />
         <h1 className="font-medium text-sm">Knowledge Graph</h1>
       </div>
-      <div className="flex-1 relative overflow-hidden flex items-center justify-center">
-        <FullPhysicsGraph />
+      <div className="flex-1 min-h-0">
+        <GraphView />
       </div>
     </div>
   );

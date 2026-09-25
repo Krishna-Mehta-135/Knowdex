@@ -51,7 +51,7 @@ const LOCAL_DIM = 512;
  */
 export class LocalHashEmbedder implements Embedder {
   public readonly name = "local-hash-v1";
-  public readonly ghostThreshold = 0.3;
+  public readonly ghostThreshold = 0.18;
 
   public async embed(texts: string[], _task?: EmbedTask): Promise<number[][]> {
     return texts.map((t) => this.embedOne(t));

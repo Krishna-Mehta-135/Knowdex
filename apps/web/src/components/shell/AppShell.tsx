@@ -33,6 +33,8 @@ import {
   Lock,
   Folder,
   UserPlus,
+  Sparkles,
+  Upload,
 } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth/useAuth";
@@ -58,6 +60,7 @@ import {
   LoadingSpinner,
 } from "@repo/ui";
 import { ShareModal } from "./ShareModal";
+import { CommandPalette } from "./CommandPalette";
 
 function normalizedDocTitle(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
@@ -72,7 +75,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [currentDocTitle, setCurrentDocTitle] = useState<string | null>(null);
   /** Command palette only — sidebar note list is not filtered by this */
-  const [cmdPaletteSearch, setCmdPaletteSearch] = useState("");
   const [isPending, startTransition] = useTransition();
   const [mounted, setMounted] = useState(false);
   const [isMac, setIsMac] = useState(true);
@@ -321,7 +323,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       }
       if (e.key === "Escape") {
         setCmdPaletteOpen(false);
-        setCmdPaletteSearch("");
       }
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -659,6 +660,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 if (window.innerWidth < 768) setSidebarOpen(false);
               }}
             />
+            <SidebarItem
+              icon={<Sparkles size={14} />}
+              label="Ask your notes"
+              onClick={() => {
+                router.push("/ask");
+                if (window.innerWidth < 768) setSidebarOpen(false);
+              }}
+            />
+            <SidebarItem
+              icon={<Upload size={14} />}
+              label="Import & clip"
+              onClick={() => {
+                router.push("/import");
+                if (window.innerWidth < 768) setSidebarOpen(false);
+              }}
+            />
           </div>
 
           <div>
@@ -941,61 +958,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
 
       {/* Command Palette Overlay */}
-      {cmdPaletteOpen && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh]">
-          <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={() => {
-              setCmdPaletteOpen(false);
-              setCmdPaletteSearch("");
-            }}
-          />
-          <div className="relative w-full max-w-2xl bg-[hsl(var(--sb-bg-panel))] border border-[hsl(var(--sb-border))] rounded-xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.7),0_0_40px_-10px_hsla(var(--sb-accent-glow)/0.2)] overflow-hidden sb-animate-in flex flex-col">
-            <div className="flex items-center px-4 h-14 border-b border-[hsl(var(--sb-border))]">
-              <Search size={20} className="text-[hsl(var(--sb-text-muted))]" />
-              <input
-                type="text"
-                placeholder="Search notes, commands, or tags..."
-                className="flex-1 bg-transparent border-none text-lg px-4 text-white placeholder:text-[hsl(var(--sb-text-faint))] focus:ring-0 focus:outline-none"
-                autoFocus
-                value={cmdPaletteSearch}
-                onChange={(e) => setCmdPaletteSearch(e.target.value)}
-              />
-              <div className="text-[10px] text-[hsl(var(--sb-text-faint))] bg-[hsl(var(--sb-bg))] px-2 py-1 rounded border border-[hsl(var(--sb-border))]">
-                ESC
-              </div>
-            </div>
-            <div className="max-h-[60vh] overflow-y-auto p-2">
-              <div className="px-3 py-2 text-xs font-semibold text-[hsl(var(--sb-text-faint))]">
-                SUGGESTIONS
-              </div>
-              <button
-                onClick={() => {
-                  setCmdPaletteOpen(false);
-                  handleCreateNew();
-                }}
-                disabled={isCreatingNew}
-                className="w-full text-left px-3 py-3 rounded-lg bg-[hsl(var(--sb-accent))/0.1] text-[hsl(var(--sb-accent))] flex items-center justify-between cursor-pointer border border-[hsl(var(--sb-accent))/0.2] hover:bg-[hsl(var(--sb-accent))/0.2] transition-colors disabled:opacity-30"
-              >
-                <div className="flex items-center gap-3 font-medium">
-                  <Plus size={16} /> Create new note
-                </div>
-                <div className="text-xs font-mono">
-                  {isMac ? "⌘N" : "Ctrl+N"}
-                </div>
-              </button>
-
-              <div className="px-3 py-2 text-xs font-semibold text-[hsl(var(--sb-text-faint))] mt-4">
-                RECENT NOTES
-              </div>
-              <SidebarDocumentList
-                search={cmdPaletteSearch}
-                tagFilter={sidebarTagFilter}
-              />
-            </div>
-          </div>
-        </div>
-      )}
+      <CommandPalette
+        open={cmdPaletteOpen}
+        onClose={() => {
+          setCmdPaletteOpen(false);
+        }}
+        onCreateNew={handleCreateNew}
+      />
 
       {/* Share Modal */}
       {displayWorkspace && (

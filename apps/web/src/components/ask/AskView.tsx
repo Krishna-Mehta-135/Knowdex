@@ -1,0 +1,231 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { FileText, Loader2, Send, Sparkles, Square } from "lucide-react";
+import { useWorkspace } from "@/lib/workspaces/WorkspaceProvider";
+import { askWorkspace, type AskSource } from "@/lib/kx/api";
+
+interface Turn {
+  id: number;
+  question: string;
+  answer: string;
+  sources: AskSource[];
+  status: "streaming" | "done" | "error";
+  mode?: string;
+  error?: string;
+}
+
+/** Render `[1]` citations as chips linking to the source note. */
+function Answer({ text, sources }: { text: string; sources: AskSource[] }) {
+  const parts = text.split(/(\[\d+\])/g);
+  return (
+    <div className="whitespace-pre-wrap text-sm leading-relaxed">
+      {parts.map((p, i) => {
+        const m = /^\[(\d+)\]$/.exec(p);
+        const src = m ? sources.find((s) => s.n === Number(m[1])) : undefined;
+        if (!src)
+          return <span key={i}>{p.replace(/\*\*(.+?)\*\*/g, "$1")}</span>;
+        return (
+          <Link
+            key={i}
+            href={`/documents/${src.sourceId}`}
+            title={src.title}
+            className="mx-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded bg-[hsl(var(--sb-accent))]/25 px-1 align-baseline text-[10px] font-semibold text-[hsl(var(--sb-accent))] no-underline hover:bg-[hsl(var(--sb-accent))]/40"
+          >
+            {src.n}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
+export function AskView() {
+  const { activeWorkspaceId } = useWorkspace();
+  const params = useSearchParams();
+  const [turns, setTurns] = useState<Turn[]>([]);
+  const [input, setInput] = useState("");
+  const abortRef = useRef<AbortController | null>(null);
+  const idRef = useRef(0);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const autoAsked = useRef<string | null>(null);
+
+  const busy = turns.at(-1)?.status === "streaming";
+
+  const ask = useCallback(
+    async (question: string) => {
+      const q = question.trim();
+      if (!q || !activeWorkspaceId) return;
+      const id = ++idRef.current;
+      setTurns((t) => [
+        ...t,
+        { id, question: q, answer: "", sources: [], status: "streaming" },
+      ]);
+      setInput("");
+      const ctl = new AbortController();
+      abortRef.current = ctl;
+      const patch = (fn: (t: Turn) => Turn) =>
+        setTurns((all) => all.map((t) => (t.id === id ? fn(t) : t)));
+      try {
+        await askWorkspace(
+          activeWorkspaceId,
+          q,
+          {
+            onSources: (sources) => patch((t) => ({ ...t, sources })),
+            onToken: (tok) => patch((t) => ({ ...t, answer: t.answer + tok })),
+            onDone: (mode) => patch((t) => ({ ...t, status: "done", mode })),
+            onError: (error) =>
+              patch((t) => ({ ...t, status: "error", error })),
+          },
+          ctl.signal,
+        );
+        patch((t) => (t.status === "streaming" ? { ...t, status: "done" } : t));
+      } catch (e) {
+        if ((e as Error).name === "AbortError")
+          patch((t) => ({ ...t, status: "done" }));
+        else
+          patch((t) => ({
+            ...t,
+            status: "error",
+            error: (e as Error).message,
+          }));
+      }
+    },
+    [activeWorkspaceId],
+  );
+
+  // /ask?q=… (from the command palette) asks immediately, once per query.
+  useEffect(() => {
+    const q = params.get("q");
+    if (q && activeWorkspaceId && autoAsked.current !== q) {
+      autoAsked.current = q;
+      void ask(q);
+    }
+  }, [params, activeWorkspaceId, ask]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [turns]);
+
+  useEffect(() => () => abortRef.current?.abort(), []);
+
+  return (
+    <div className="mx-auto flex h-full w-full max-w-3xl flex-col px-4">
+      <div className="flex-1 space-y-8 overflow-y-auto py-8 custom-scrollbar">
+        {turns.length === 0 && (
+          <div className="mt-16 text-center">
+            <Sparkles
+              className="mx-auto mb-3 text-[hsl(var(--sb-accent))]"
+              size={28}
+            />
+            <h2 className="text-lg font-medium">Ask your notes anything</h2>
+            <p className="mx-auto mt-2 max-w-md text-sm text-[hsl(var(--sb-text-muted))]">
+              Answers are grounded in this workspace’s notes and PDFs, with
+              numbered citations you can click.
+            </p>
+            <div className="mt-6 flex flex-wrap justify-center gap-2">
+              {[
+                "Summarize what I know about my main topics",
+                "Which notes are related to each other?",
+                "What action items do I have?",
+              ].map((s) => (
+                <button
+                  key={s}
+                  onClick={() => void ask(s)}
+                  className="rounded-full border border-[hsl(var(--sb-border))] px-3 py-1.5 text-xs text-[hsl(var(--sb-text-muted))] hover:bg-[hsl(var(--sb-bg-hover))]"
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {turns.map((t) => (
+          <div key={t.id} className="space-y-3">
+            <div className="ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-sm bg-[hsl(var(--sb-accent))]/20 px-4 py-2 text-sm">
+              {t.question}
+            </div>
+            <div className="rounded-2xl rounded-bl-sm border border-[hsl(var(--sb-border))] bg-[hsl(var(--sb-bg-panel))] px-4 py-3">
+              {t.status === "streaming" && !t.answer && (
+                <div className="flex items-center gap-2 text-sm text-[hsl(var(--sb-text-muted))]">
+                  <Loader2 size={14} className="animate-spin" /> Searching your
+                  notes…
+                </div>
+              )}
+              {t.answer && <Answer text={t.answer} sources={t.sources} />}
+              {t.status === "error" && (
+                <p className="text-sm text-red-300">
+                  Something went wrong: {t.error}
+                </p>
+              )}
+              {t.status === "done" &&
+                t.mode === "extractive" &&
+                t.sources.length > 0 && (
+                  <p className="mt-2 text-[11px] text-[hsl(var(--sb-text-faint))]">
+                    AI generation unavailable — showing matching passages.
+                  </p>
+                )}
+              {t.sources.length > 0 && (
+                <ul className="mt-3 flex flex-wrap gap-2 border-t border-[hsl(var(--sb-border))] pt-3">
+                  {t.sources.map((s) => (
+                    <li key={s.n}>
+                      <Link
+                        href={`/documents/${s.sourceId}`}
+                        title={s.snippet}
+                        className="flex max-w-[220px] items-center gap-1.5 rounded-lg border border-[hsl(var(--sb-border))] px-2 py-1 text-xs text-[hsl(var(--sb-text-muted))] no-underline hover:bg-[hsl(var(--sb-bg-hover))]"
+                      >
+                        <span className="font-semibold text-[hsl(var(--sb-accent))]">
+                          {s.n}
+                        </span>
+                        <FileText size={12} />
+                        <span className="truncate">{s.title}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        ))}
+        <div ref={bottomRef} />
+      </div>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!busy) void ask(input);
+        }}
+        className="mb-4 flex items-center gap-2 rounded-2xl border border-[hsl(var(--sb-border))] bg-[hsl(var(--sb-bg-panel))] px-4 py-2 focus-within:border-[hsl(var(--sb-accent))]/60"
+      >
+        <input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder="Ask a question about your notes…"
+          aria-label="Question"
+          maxLength={1000}
+          className="flex-1 bg-transparent py-2 text-sm outline-none placeholder:text-[hsl(var(--sb-text-faint))]"
+        />
+        {busy ? (
+          <button
+            type="button"
+            onClick={() => abortRef.current?.abort()}
+            aria-label="Stop"
+            className="rounded-lg p-2 hover:bg-[hsl(var(--sb-bg-hover))]"
+          >
+            <Square size={16} />
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={!input.trim() || !activeWorkspaceId}
+            aria-label="Send"
+            className="rounded-lg p-2 text-[hsl(var(--sb-accent))] hover:bg-[hsl(var(--sb-bg-hover))] disabled:opacity-40"
+          >
+            <Send size={16} />
+          </button>
+        )}
+      </form>
+    </div>
+  );
+}

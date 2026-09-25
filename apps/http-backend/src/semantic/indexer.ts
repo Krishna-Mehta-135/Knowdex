@@ -15,7 +15,12 @@ export async function indexSource(args: {
   text: string;
 }): Promise<boolean> {
   const { sourceId, sourceType, workspaceId, title, text } = args;
-  const body = `${title}\n\n${text}`.trim();
+  // Notes usually start with their title as a heading; don't index it twice.
+  const startsWithTitle = text
+    .trimStart()
+    .toLowerCase()
+    .startsWith(title.trim().toLowerCase());
+  const body = (startsWithTitle ? text : `${title}\n\n${text}`).trim();
   const hash = hashOf(body);
   const prev = await prisma.docIndexState.findUnique({ where: { sourceId } });
   const embedderName = preferredEmbedder().name;
