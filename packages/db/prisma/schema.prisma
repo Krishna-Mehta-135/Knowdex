@@ -120,3 +120,49 @@ model DocumentLink {
   @@id([fromDocId, toDocId])
   @@index([toDocId])
 }
+
+/**
+ * Semantic index: one row per text chunk of a document or attachment.
+ * Embeddings are stored as float arrays (no pgvector extension required) and
+ * compared in-process; a workspace holds at most a few thousand chunks.
+ */
+model DocChunk {
+  id          String   @id @default(uuid())
+  /** Content id for notes, Attachment id for files. */
+  sourceId    String
+  sourceType  String   @default("document") // "document" | "attachment"
+  workspaceId String
+  idx         Int
+  text        String
+  embedding   Float[]
+  embedder    String   @default("local-hash-v1")
+  createdAt   DateTime @default(now())
+
+  @@index([sourceId])
+  @@index([workspaceId])
+}
+
+/** Tracks what was last indexed so the background sweep only re-embeds changes. */
+model DocIndexState {
+  sourceId  String   @id
+  hash      String
+  embedder  String
+  indexedAt DateTime @default(now())
+}
+
+/** Files (PDF, images, ...) uploaded into a note. Stored inline in Postgres. */
+model Attachment {
+  id            String   @id @default(uuid())
+  docId         String?
+  workspaceId   String
+  userId        String
+  name          String
+  mime          String
+  size          Int
+  data          Bytes
+  extractedText String   @default("")
+  createdAt     DateTime @default(now())
+
+  @@index([docId])
+  @@index([workspaceId])
+}
