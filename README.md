@@ -1,217 +1,108 @@
-<div align="center">
-  <h1>Knowdex Core Architecture</h1>
-  <p><strong>High-Performance Distributed Knowledge Management Protocol</strong></p>
-</div>
+# Knowdex
 
-<br />
+A local-first, collaborative note-taking app built around a knowledge graph. Notes are markdown with `[[links]]`, edited live by several people at once, and searchable by meaning as well as by keyword. Live at [knowdex.me](https://knowdex.me).
 
-Knowdex is a local-first, structurally consistent collaborative knowledge graph. It relies on advanced Conflict-free Replicated Data Types (CRDTs) to guarantee high-fidelity data synchronization and deterministic conflict resolution across an arbitrarily large network of edge clients.
+## What it does
 
-## Architectural Topology
+- **Editor.** Rich text with a `/` command menu: headings, lists, todos, tables, callouts, code, images, PDFs, web bookmarks and `[[note links]]`. Paste or drop files to upload them.
+- **Real-time collaboration.** Yjs CRDTs over WebSockets. Edits merge without conflicts, including edits made offline.
+- **Knowledge graph.** Force-directed view of the links between notes, coloured by cluster (Louvain community detection). Dashed ghost links join notes that are similar in meaning but not yet linked.
+- **Ask your notes.** Questions are answered from your own notes and PDFs, streamed, with numbered citations that open the source.
+- **Semantic search.** Notes are chunked and embedded in the background; search combines vector similarity with keyword matching.
+- **Databases.** Typed properties (text, number, select, multi-select, date, checkbox, URL) with table and kanban views. Rows are ordinary notes.
+- **Assistant.** Summarise, extract action items, continue writing or rewrite a selection. While the AI writes, every collaborator sees who asked and the text as it arrives.
+- **Import and clip.** Markdown files, Obsidian vaults and Notion exports; clip a public web page into a note.
+- **Publish.** Make a note public at `/p/<id>`. Public pages are sanitised and never expose private links or attachments.
+- **Version history.** Automatic snapshots with preview and non-destructive restore.
+- **Offline.** A service worker and IndexedDB keep notes, sidebar and graph available with the server down. Edits queue and sync when the connection returns.
 
-The backend topology separates long-lived, stateful connections from stateless HTTP requests, ensuring that resource-intensive WebSocket broadcasts do not degrade standard API performance.
-
-```mermaid
-graph TB
-    subgraph Client Layer
-        Web[Next.js Client]
-        Mobile[Mobile Client]
-    end
-
-    subgraph Load Balancing
-        Nginx[Nginx Reverse Proxy / API Gateway]
-    end
-
-    subgraph Microservices
-        Auth[HTTP Backend Node]
-        Sync[WebSocket Sync Node]
-    end
-
-    subgraph Persistence Layer
-        DB[(PostgreSQL 15)]
-        Cache[(Redis 7 Cluster)]
-    end
-
-    subgraph External
-        LLM[Google Generative AI]
-    end
-
-    Web -->|HTTPS| Nginx
-    Mobile -->|HTTPS| Nginx
-
-    Nginx -->|Route: /api/*| Auth
-    Nginx -->|Route: /ws/*| Sync
-
-    Auth -->|Read/Write| DB
-    Sync -->|CRDT Updates| DB
-
-    Sync -.->|Pub/Sub Backbone| Cache
-    Auth -.->|Session State| Cache
-
-    Sync -->|Streaming Generation| LLM
-```
-
-## Conflict-Free Replicated Data Protocol (CRDT)
-
-At the core of the collaboration engine lies the `Y.js` protocol. When concurrent updates occur across isolated network partitions, the CRDT algorithm guarantees that all peers mathematically converge on the identical final document state.
-
-### Multi-Node Synchronization Flow
-
-```mermaid
-sequenceDiagram
-    participant C1 as Client 1 (Edge)
-    participant N1 as WS Gateway Alpha
-    participant MessageBus as Redis Backbone
-    participant N2 as WS Gateway Beta
-    participant C2 as Client 2 (Edge)
-
-    Note over C1,C2: Both clients possess Document Version V1
-    C1->>C1: User types "Hello"
-    C1->>N1: Transmit Uint8Array Update (V2)
-    N1->>MessageBus: Publish Topic [DocID] -> V2
-    MessageBus->>N2: Distribute to Subscriber
-    N2->>C2: Dispatch binary frame (V2)
-    C2->>C2: Apply fractional update (Y.applyUpdate)
-    Note over C1,C2: Guaranteed state convergence without operational transformation (OT)
-```
-
-## Component Architecture
-
-Knowdex is orchestrated as a Turborepo monorepo, delineating rigid boundaries between generic utilities and domain-specific microservices.
+## Architecture
 
 ```mermaid
 graph LR
-    subgraph Applications
-        Web(web)
-        Http(http-backend)
-        Ws(ws-backend)
-    end
-
-    subgraph Internal Packages
-        UI(ui)
-        Types(types)
-        Db(db)
-        Crdt(crdt)
-        Config(config)
-    end
-
-    Web --> UI
-    Web --> Types
-    Web --> Crdt
-
-    Http --> Types
-    Http --> Db
-
-    Ws --> Types
-    Ws --> Db
-    Ws --> Crdt
+    Browser[Browser<br/>Next.js on Vercel] -->|HTTPS| Proxy[Caddy]
+    Browser -->|WSS| Proxy
+    Proxy --> HTTP[http-backend<br/>Express + Prisma]
+    Proxy --> WS[ws-backend<br/>Yjs sync]
+    HTTP --> PG[(PostgreSQL)]
+    WS --> PG
+    WS <-->|pub/sub| Redis[(Redis)]
+    HTTP --> Gemini[Gemini API]
+    WS --> Gemini
 ```
 
-### Module Specifications
+The HTTP API is stateless. The WebSocket server holds the long-lived connections and fans updates out across instances through Redis, so the two scale separately.
 
-- **`@repo/crdt`**: Defines the proprietary binary codecs utilized for data transport between clients and the WebSocket gateway, preventing parsing overhead associated with JSON payloads.
-- **`@repo/db`**: Manages the unified PostgreSQL schema via Prisma. Enforces foreign key constraints and referential integrity across the system.
-- **`apps/ws-backend`**: A scalable, non-blocking Node.js process dedicated exclusively to multiplexing WebSocket streams and coordinating the Y.js state vector.
-- **`apps/http-backend`**: A traditional stateless REST API managing authentication boundaries, role-based access control, and metadata querying.
+| Path                                               | Role                                                                       |
+| -------------------------------------------------- | -------------------------------------------------------------------------- |
+| `apps/web`                                         | Next.js 16 frontend (App Router, Tiptap editor, service worker)            |
+| `apps/http-backend`                                | Express 5 API: auth, notes, graph, search, Ask, import, publish, databases |
+| `apps/ws-backend`                                  | WebSocket server: Yjs sync, presence, streaming AI writer                  |
+| `packages/db`                                      | Prisma schema and migrations                                               |
+| `packages/crdt`                                    | Binary sync protocol shared by client and server                           |
+| `packages/types`, `packages/ui`, `packages/config` | Shared types, components and config                                        |
 
-## System Prerequisites
+Semantic search stores embeddings as plain Postgres `float8[]` and caches them per workspace in memory, so no pgvector extension is needed. Embeddings come from `gemini-embedding-001`; with no API key a deterministic local embedder is used instead.
 
-To deploy or build the Knowdex ecosystem, the following host environments must be provisioned:
+## Running locally
 
-- Container Orchestrator: Docker Engine 24.0+
-- Orchestration Tool: Docker Compose v2.20+
-- Runtime: Node.js 20.x LTS
-- Package Manager: pnpm 9.0+
-
-## Local Deployment
-
-1. **Environment Configuration**
-   Provision the environment variables required for cryptographic signing and external integrations.
-
-   ```bash
-   cp .env.example .env
-   ```
-
-2. **Containerized Provisioning**
-   Initialize the complete stack via Docker Compose. This strategy ensures parity with production topology.
-
-   ```bash
-   docker compose up --build -d
-   ```
-
-3. **Service Verification**
-   Verify all subsystems are operational and responding to health checks.
-   - Application Gateway: http://localhost:3000
-   - REST Services: http://localhost:8000/health
-   - WebSocket Services: http://localhost:8080/health
-
-## Continuous Delivery Pipeline
-
-The CI/CD pipeline enforces rigorous static analysis prior to image generation.
-
-```mermaid
-graph LR
-    Push[Code Push] --> Typecheck[TSC Matrix]
-    Push --> Lint[ESLint]
-    Push --> Test[Jest Suites]
-
-    Typecheck --> Build[Docker Build]
-    Lint --> Build
-    Test --> Build
-
-    Build --> Deploy[Rolling Update]
-```
-
-Production environments utilize independently deployed artifacts, allowing the WebSocket nodes to scale autonomously from the HTTP cluster in response to high concurrency scenarios.
-
----
-
-## Product features
-
-| Feature                         | What it does                                                                                                                                                                                                        | Where                                                          |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| **Knowledge graph**             | Canvas force-graph of real `[[links]]`, plus dashed _ghost links_ between similar-but-unlinked notes, a suggestions panel, timeline playback, search highlight. Idle cost is ~0 (the simulation stops when cooled). | `apps/web/src/components/graph`, `lib/graph/forceSim.ts`       |
-| **Ask your notes**              | Streaming answers grounded in the workspace's notes and PDFs, with clickable numbered citations. Falls back to matching passages if no Gemini key is available.                                                     | `apps/http-backend/src/semantic/ask.ts`, `/ask`                |
-| **Semantic index**              | Notes/PDFs are chunked and embedded in the background (Gemini `gemini-embedding-001`, deterministic local fallback). Embeddings live in plain Postgres `float8[]` — no pgvector needed.                             | `apps/http-backend/src/semantic`                               |
-| **Command palette**             | ⌘K: title + meaning search, actions, "Ask: …".                                                                                                                                                                      | `components/shell/CommandPalette.tsx`                          |
-| **AI as a collaborator**        | While the AI writes, every collaborator sees who asked and the text streaming in (over Yjs awareness). The requester reviews and accepts/discards.                                                                  | `components/ai`, `lib/sync/useAIPresence.ts`                   |
-| **Blocks**                      | `/` menu: headings, lists, todo, table, callout, code, image, PDF/file, web bookmark, `[[link]]`. Paste/drop files to upload.                                                                                       | `components/editor/slash`                                      |
-| **Import & clip**               | Markdown / Obsidian vault / Notion export (zip) → notes with tags, folders and real backlinks; clip any public web page.                                                                                            | `/import`, `apps/http-backend/src/import`                      |
-| **Version history**             | Automatic snapshots, preview, and non-destructive restore.                                                                                                                                                          | `components/editor/VersionHistory.tsx`                         |
-| **Databases**                   | Notion-style databases: typed properties (text, number, select, multi-select, date, checkbox, URL), table + kanban views, inline editing, sort/filter/hide, templates. Rows are real notes.                         | `components/databases`, `apps/http-backend/src/databases`      |
-| **In-note assistant**           | Summarize, extract action items, continue, improve selection, custom prompts; suggests tags and links for a note.                                                                                                   | `components/editor/AssistPanel.tsx`, `semantic/assist.ts`      |
-| **Publish to web**              | Toggle a note public and share `/p/<id>`: login-free, sanitised, private links/attachments never leak.                                                                                                              | `app/p`, `apps/http-backend/src/publish`                       |
-| **Offline-first**               | Service worker + IndexedDB: notes, sidebar and graph reopen with the server down; edits queue and sync automatically; honest sync banner.                                                                           | `public/sw.js`, `lib/sync`, `components/status/SyncBanner.tsx` |
-| **Related & unlinked mentions** | Under every note: related-by-meaning notes and plain-text mentions, one click from a real link.                                                                                                                     | `components/editor/RelatedPanel.tsx`                           |
-
-### Local development without cloud keys
+Requirements: Node 20, pnpm, Docker.
 
 ```bash
-# throwaway Postgres + Redis on non-default ports (never point tests at a shared DB)
+cp .env.example .env
+docker compose up --build -d
+```
+
+- App: http://localhost:3000
+- API health: http://localhost:8000/health
+- WebSocket health: http://localhost:8080/health
+
+To run without cloud keys, start a throwaway database and mock the AI:
+
+```bash
 docker run -d --name kx-dev-pg -e POSTGRES_PASSWORD=dev -e POSTGRES_DB=knowdex_dev -p 5544:5432 postgres:15-alpine
 docker run -d --name kx-dev-redis -p 6390:6379 redis:7-alpine
 
 export DATABASE_URL=postgresql://postgres:dev@127.0.0.1:5544/knowdex_dev
 export REDIS_URL=redis://127.0.0.1:6390
 pnpm --filter @repo/db exec prisma migrate deploy
-AI_MOCK=1 pnpm dev            # AI_MOCK=1 streams a canned answer instead of calling Gemini
+AI_MOCK=1 pnpm dev
+```
 
-# optional: an interlinked demo workspace (refuses non-local databases)
+`AI_MOCK=1` streams a canned answer instead of calling Gemini. To load an interlinked demo workspace (refuses non-local databases):
+
+```bash
 cd apps/http-backend && npx tsx scripts/seed-demo.ts you@example.com
 ```
 
-### Tests
+## Tests
 
 ```bash
-pnpm turbo test                                # unit tests
-TEST_DATABASE_URL=$DATABASE_URL pnpm turbo test  # + real-database API integration tests
+pnpm turbo test                                   # unit tests
+TEST_DATABASE_URL=$DATABASE_URL pnpm turbo test   # plus API integration tests
 ```
 
-Integration tests create and delete their own rows but **must not** be pointed at a shared or production database.
+Integration tests create and delete their own rows. Never point them at a shared or production database. Run `pnpm turbo build` before pushing; the Docker build type-checks more strictly than the dev server.
 
-### Operational notes
+## Configuration
 
-- **Gemini**: set `GEMINI_API_KEY` (free tier allows ~1000 embedding requests/day — set `EMBEDDINGS_PROVIDER=local` on dev machines so they don't use it up); optionally `GEMINI_MODEL` (falls back through stable model aliases). Embedding thresholds are calibrated for `gemini-embedding-001`; without a key a local embedder is used.
-- **Rate limits** (per user, in memory): Ask 20/min, assistant 30/min, imports 10/10min, uploads 30/min, public pages 240/min/IP. `RATE_LIMIT_DISABLED=1` turns them off (tests).
-- **Search cache**: chunk vectors are cached per workspace in the backend process and invalidated on re-index; a multi-instance deployment should move this to a shared store or pgvector.
-- **Offline**: the service worker registers in production builds only. Sign-out clears cached user data.
+See `.env.example` for the full list. The ones that change behaviour:
+
+| Variable                    | Effect                                                                                      |
+| --------------------------- | ------------------------------------------------------------------------------------------- |
+| `GEMINI_API_KEY`            | Enables Gemini answers, assistant and embeddings                                            |
+| `GEMINI_MODEL`              | Preferred generation model; falls back through other models on quota or availability errors |
+| `EMBEDDINGS_PROVIDER=local` | Use the local embedder (saves the free-tier embedding quota on dev machines)                |
+| `AI_MOCK=1`                 | Canned AI responses for development                                                         |
+| `RATE_LIMIT_DISABLED=1`     | Turn off per-user rate limits (tests only)                                                  |
+
+The Gemini free tier allows roughly 1000 embedding requests per day. Per-user rate limits are in memory: Ask 20/min, assistant 30/min, imports 10 per 10 min, uploads 30/min, public pages 240/min per IP.
+
+## Deployment
+
+The frontend deploys to Vercel. The two backends run as Docker containers on an Azure VM behind Caddy, with PostgreSQL on Azure Flexible Server and Redis on a private VM. Every push to `main` runs CI (typecheck, lint, tests, Docker build check), builds and pushes images to GitHub Container Registry, deploys over SSH, waits for `/health`, then triggers the Vercel deploy. Database migrations run when the API container starts.
+
+- [DEPLOY.md](DEPLOY.md): production setup and operations
+- [DOCKER.md](DOCKER.md): container details
+- [ARCHITECTURE.md](ARCHITECTURE.md): design notes
+- [CONTRIBUTING.md](CONTRIBUTING.md): workflow and CI
