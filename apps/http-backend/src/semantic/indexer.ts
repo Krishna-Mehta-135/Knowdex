@@ -4,127 +4,159 @@ import { chunkText } from "./chunker.js";
 import { embedWithFallback, preferredEmbedder } from "./embedder.js";
 import { extractPlainText } from "./text.js";
 import { snapshotSweep } from "./versions.js";
+import { bumpWorkspace } from "./index-cache.js";
 
 const hashOf = (s: string) => createHash("sha1").update(s).digest("hex");
 
-/** (Re)build the chunk rows for one source. Returns false when nothing changed. */
-export async function indexSource(args: {
+export interface IndexItem {
   sourceId: string;
   sourceType: "document" | "attachment";
   workspaceId: string;
   title: string;
   text: string;
-}): Promise<boolean> {
-  const { sourceId, sourceType, workspaceId, title, text } = args;
+}
+
+function bodyFor(title: string, text: string): string {
   // Notes usually start with their title as a heading; don't index it twice.
   const startsWithTitle = text
     .trimStart()
     .toLowerCase()
     .startsWith(title.trim().toLowerCase());
-  const body = (startsWithTitle ? text : `${title}\n\n${text}`).trim();
-  const hash = hashOf(body);
-  const prev = await prisma.docIndexState.findUnique({ where: { sourceId } });
-  const embedderName = preferredEmbedder().name;
-
-  if (prev && prev.hash === hash && prev.embedder === embedderName) {
-    await prisma.docIndexState.update({
-      where: { sourceId },
-      data: { indexedAt: new Date() },
-    });
-    return false;
-  }
-
-  const chunks = chunkText(body);
-  if (chunks.length === 0) {
-    await prisma.$transaction([
-      prisma.docChunk.deleteMany({ where: { sourceId } }),
-      prisma.docIndexState.upsert({
-        where: { sourceId },
-        create: { sourceId, hash, embedder: embedderName },
-        update: { hash, embedder: embedderName, indexedAt: new Date() },
-      }),
-    ]);
-    return true;
-  }
-
-  // Every chunk carries the title so passages stay attributable when retrieved.
-  const inputs = chunks.map((c, i) => (i === 0 ? c : `${title}: ${c}`));
-  const { vectors, embedder } = await embedWithFallback(inputs, "document");
-
-  await prisma.$transaction([
-    prisma.docChunk.deleteMany({ where: { sourceId } }),
-    prisma.docChunk.createMany({
-      data: chunks.map((text, idx) => ({
-        sourceId,
-        sourceType,
-        workspaceId,
-        idx,
-        text,
-        embedding: vectors[idx]!,
-        embedder: embedder.name,
-      })),
-    }),
-    prisma.docIndexState.upsert({
-      where: { sourceId },
-      create: { sourceId, hash, embedder: embedder.name },
-      update: { hash, embedder: embedder.name, indexedAt: new Date() },
-    }),
-  ]);
-  return true;
+  return (startsWithTitle ? text : `${title}\n\n${text}`).trim();
 }
 
-/** Index every note whose persisted state changed since it was last indexed. */
-export async function sweepIndex(limit = 10): Promise<number> {
-  const contents = await prisma.content.findMany({
-    where: { type: "document", workspaceId: { not: null } },
-    select: { id: true, title: true, workspaceId: true },
-  });
-  const ids = contents.map((c) => c.id);
-
-  // Drop chunks of notes that were deleted.
-  await prisma.docChunk.deleteMany({
-    where: { sourceType: "document", sourceId: { notIn: ids } },
-  });
-
-  if (ids.length === 0) return 0;
-  const [docs, states] = await Promise.all([
-    prisma.document.findMany({
-      where: { id: { in: ids } },
-      select: { id: true, updatedAt: true },
-    }),
-    prisma.docIndexState.findMany({ where: { sourceId: { in: ids } } }),
-  ]);
-  const stateById = new Map(states.map((s) => [s.sourceId, s]));
+/**
+ * (Re)build chunk rows for several sources. All chunks needing embeddings go
+ * out in ONE embedder call (which itself batches 50 per request), instead of
+ * a request per note. Returns how many sources actually changed.
+ */
+export async function indexMany(items: IndexItem[]): Promise<number> {
+  if (items.length === 0) return 0;
   const embedderName = preferredEmbedder().name;
-
-  const stale = docs.filter((d) => {
-    const s = stateById.get(d.id);
-    return !s || d.updatedAt > s.indexedAt || s.embedder !== embedderName;
+  const states = await prisma.docIndexState.findMany({
+    where: { sourceId: { in: items.map((i) => i.sourceId) } },
   });
+  const prevById = new Map(states.map((s) => [s.sourceId, s]));
 
-  let done = 0;
-  for (const d of stale.slice(0, limit)) {
-    const c = contents.find((x) => x.id === d.id);
-    if (!c?.workspaceId) continue;
-    const row = await prisma.document.findUnique({ where: { id: d.id } });
-    if (!row) continue;
-    try {
-      await indexSource({
-        sourceId: d.id,
-        sourceType: "document",
+  const touch: string[] = [];
+  const work: {
+    item: IndexItem;
+    hash: string;
+    chunks: string[];
+    inputs: string[];
+  }[] = [];
+  for (const item of items) {
+    const body = bodyFor(item.title, item.text);
+    const hash = hashOf(body);
+    const prev = prevById.get(item.sourceId);
+    if (prev && prev.hash === hash && prev.embedder === embedderName) {
+      touch.push(item.sourceId);
+      continue;
+    }
+    const chunks = chunkText(body);
+    // Every chunk carries the title so passages stay attributable when retrieved.
+    const inputs = chunks.map((c, i) => (i === 0 ? c : `${item.title}: ${c}`));
+    work.push({ item, hash, chunks, inputs });
+  }
+
+  if (touch.length > 0) {
+    await prisma.docIndexState.updateMany({
+      where: { sourceId: { in: touch } },
+      data: { indexedAt: new Date() },
+    });
+  }
+  if (work.length === 0) return 0;
+
+  const allInputs = work.flatMap((w) => w.inputs);
+  const { vectors, embedder } =
+    allInputs.length > 0
+      ? await embedWithFallback(allInputs, "document")
+      : { vectors: [] as number[][], embedder: preferredEmbedder() };
+
+  let offset = 0;
+  const touchedWorkspaces = new Set<string>();
+  for (const w of work) {
+    const vs = vectors.slice(offset, offset + w.chunks.length);
+    offset += w.chunks.length;
+    const { sourceId, sourceType, workspaceId } = w.item;
+    await prisma.$transaction([
+      prisma.docChunk.deleteMany({ where: { sourceId } }),
+      prisma.docChunk.createMany({
+        data: w.chunks.map((text, idx) => ({
+          sourceId,
+          sourceType,
+          workspaceId,
+          idx,
+          text,
+          embedding: vs[idx]!,
+          embedder: embedder.name,
+        })),
+      }),
+      prisma.docIndexState.upsert({
+        where: { sourceId },
+        create: { sourceId, hash: w.hash, embedder: embedder.name },
+        update: {
+          hash: w.hash,
+          embedder: embedder.name,
+          indexedAt: new Date(),
+        },
+      }),
+    ]);
+    touchedWorkspaces.add(workspaceId);
+  }
+  for (const ws of touchedWorkspaces) bumpWorkspace(ws);
+  return work.length;
+}
+
+/** Index a single source (uploads). */
+export async function indexSource(item: IndexItem): Promise<boolean> {
+  return (await indexMany([item])) > 0;
+}
+
+/** Remove index rows whose note/attachment no longer exists. */
+export async function cleanupOrphans(): Promise<void> {
+  await prisma.$executeRaw`DELETE FROM "DocChunk" ch WHERE ch."sourceType" = 'document' AND NOT EXISTS (SELECT 1 FROM "Content" c WHERE c.id = ch."sourceId")`;
+  await prisma.$executeRaw`DELETE FROM "DocChunk" ch WHERE ch."sourceType" = 'attachment' AND NOT EXISTS (SELECT 1 FROM "Attachment" a WHERE a.id = ch."sourceId")`;
+  await prisma.$executeRaw`DELETE FROM "DocIndexState" st WHERE NOT EXISTS (SELECT 1 FROM "Content" c WHERE c.id = st."sourceId") AND NOT EXISTS (SELECT 1 FROM "Attachment" a WHERE a.id = st."sourceId")`;
+}
+
+/**
+ * Index notes whose persisted state changed since they were last indexed.
+ * A single indexed query finds the stale ones — no full-table scans per tick.
+ */
+export async function sweepIndex(limit = 25): Promise<number> {
+  const embedderName = preferredEmbedder().name;
+  const stale = await prisma.$queryRaw<
+    { id: string; title: string; workspaceId: string }[]
+  >`SELECT c.id, c.title, c."workspaceId"
+      FROM "Content" c
+      JOIN "Document" d ON d.id = c.id
+      LEFT JOIN "DocIndexState" s ON s."sourceId" = c.id
+     WHERE c.type = 'document' AND c."workspaceId" IS NOT NULL
+       AND (s."sourceId" IS NULL OR d."updatedAt" > s."indexedAt" OR s.embedder <> ${embedderName})
+     ORDER BY d."updatedAt" DESC
+     LIMIT ${limit}`;
+  if (stale.length === 0) return 0;
+
+  const rows = await prisma.document.findMany({
+    where: { id: { in: stale.map((s) => s.id) } },
+    select: { id: true, state: true },
+  });
+  const stateById = new Map(rows.map((r) => [r.id, r.state]));
+  try {
+    return await indexMany(
+      stale.map((c) => ({
+        sourceId: c.id,
+        sourceType: "document" as const,
         workspaceId: c.workspaceId,
         title: c.title,
-        text: extractPlainText(row.state),
-      });
-      done++;
-      // Stay under Gemini's per-minute embedding quota during bulk (re)indexing.
-      if (preferredEmbedder().name !== "local-hash-v1")
-        await new Promise((r) => setTimeout(r, 700));
-    } catch (e) {
-      console.error(`[index] failed for ${d.id}:`, (e as Error).message);
-    }
+        text: extractPlainText(stateById.get(c.id) ?? new Uint8Array()),
+      })),
+    );
+  } catch (e) {
+    console.error("[index] batch failed:", (e as Error).message);
+    return 0;
   }
-  return done;
 }
 
 let timer: NodeJS.Timeout | null = null;
@@ -137,8 +169,10 @@ let stopped = false;
 export function startIndexer(idleMs = 15_000, burstMs = 400): void {
   if (timer || process.env.DISABLE_INDEXER === "1") return;
   stopped = false;
+  let ticks = 0;
   const tick = async () => {
     let next = idleMs;
+    if (ticks++ % 20 === 0) await cleanupOrphans().catch(() => undefined);
     try {
       const n = await sweepIndex(25);
       await snapshotSweep().catch((e) =>

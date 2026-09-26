@@ -33,7 +33,13 @@ import { EditorSkeleton } from "./EditorSkeleton";
 import { CollaboratorBar } from "./CollaboratorBar";
 import { WordCount } from "./WordCount";
 import { EditorToolbar } from "./EditorToolbar";
-import { VersionHistory } from "./VersionHistory";
+import dynamic from "next/dynamic";
+
+// History pulls in a second editor + Yjs conversion; load it only when opened.
+const VersionHistory = dynamic(
+  () => import("./VersionHistory").then((m) => m.VersionHistory),
+  { ssr: false },
+);
 
 import { AIPanel } from "@/components/ai/AIPanel";
 import { useBacklinks } from "@/lib/documents/useBacklinks";

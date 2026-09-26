@@ -1,5 +1,3 @@
-import JSZip from "jszip";
-
 export interface ImportFile {
   path: string;
   markdown: string;
@@ -25,6 +23,8 @@ async function fromZip(
   skipped: SkippedFile[],
   depth: number,
 ) {
+  // Loaded on demand: zip support is only needed on the import page.
+  const { default: JSZip } = await import("jszip");
   const zip = await JSZip.loadAsync(buf);
   for (const entry of Object.values(zip.files)) {
     if (entry.dir || ignored(entry.name)) continue;

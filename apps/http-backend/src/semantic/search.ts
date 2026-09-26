@@ -1,6 +1,12 @@
 import { prisma } from "@repo/db";
 import { embedderByName, getLocalEmbedder, type Embedder } from "./embedder.js";
-import { centroid, cosine, dot } from "./vector.js";
+import { cosine, dot } from "./vector.js";
+import {
+  loadDocVectors,
+  loadWorkspaceChunks,
+  stemmedTokens,
+  type DocVector,
+} from "./index-cache.js";
 
 export interface ScoredChunk {
   sourceId: string;
@@ -8,6 +14,8 @@ export interface ScoredChunk {
   idx: number;
   text: string;
   score: number;
+  /** Minimum score for this chunk's embedder to count as relevant. */
+  floor: number;
 }
 
 export async function isMember(userId: string, workspaceId: string) {
@@ -46,48 +54,42 @@ export async function searchChunks(
   query: string,
   k = 8,
 ): Promise<ScoredChunk[]> {
-  const chunks = await prisma.docChunk.findMany({ where: { workspaceId } });
+  const { chunks } = await loadWorkspaceChunks(workspaceId);
   if (chunks.length === 0) return [];
   const qv = await queryVectors(new Set(chunks.map((c) => c.embedder)), query);
+  const qTokens = [...stemmedTokens(query)];
   const scored: ScoredChunk[] = [];
   for (const c of chunks) {
     const v = qv.get(c.embedder);
     if (!v) continue;
+    const vec = dot(v, c.embedding);
+    // Hybrid: vectors capture meaning, exact term overlap rescues names/IDs/rare
+    // words that embeddings blur. Additive so per-embedder thresholds still apply.
+    let lexical = 0;
+    if (qTokens.length > 0) {
+      let hit = 0;
+      for (const t of qTokens) if (c.tokens.has(t)) hit++;
+      lexical = hit / qTokens.length;
+    }
+    const floor = embedderByName(c.embedder)?.searchFloor ?? 0.05;
     scored.push({
       sourceId: c.sourceId,
       sourceType: c.sourceType,
       idx: c.idx,
       text: c.text,
-      score: dot(v, c.embedding),
+      score: vec + 0.15 * lexical,
+      floor,
     });
   }
   scored.sort((a, b) => b.score - a.score);
   return scored.slice(0, k);
 }
 
-export interface DocVector {
-  docId: string;
-  embedder: string;
-  vector: number[];
-}
+export type { DocVector };
 
 /** One centroid vector per source (note or attachment) in the workspace. */
 export async function docVectors(workspaceId: string): Promise<DocVector[]> {
-  const chunks = await prisma.docChunk.findMany({
-    where: { workspaceId },
-    select: { sourceId: true, embedder: true, embedding: true },
-  });
-  const groups = new Map<string, { embedder: string; vs: number[][] }>();
-  for (const c of chunks) {
-    const g = groups.get(c.sourceId) ?? { embedder: c.embedder, vs: [] };
-    if (g.embedder === c.embedder) g.vs.push(c.embedding);
-    groups.set(c.sourceId, g);
-  }
-  return [...groups].map(([docId, g]) => ({
-    docId,
-    embedder: g.embedder,
-    vector: centroid(g.vs),
-  }));
+  return loadDocVectors(workspaceId);
 }
 
 export interface Neighbor {

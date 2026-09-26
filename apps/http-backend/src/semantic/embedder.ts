@@ -8,6 +8,8 @@ export interface Embedder {
   readonly ghostThreshold: number;
   /** Looser cutoff for the per-note "related" list. */
   readonly relatedThreshold: number;
+  /** Minimum vector score for a chunk to count as relevant to a query. */
+  readonly searchFloor: number;
   embed(texts: string[], task: EmbedTask): Promise<number[][]>;
 }
 
@@ -35,7 +37,7 @@ function fnv1a(s: string): number {
 }
 
 /** Light stemmer so "graphs"/"graph", "linking"/"linked" collide. */
-function stem(w: string): string {
+export function stem(w: string): string {
   if (w.length > 5 && w.endsWith("ing")) return w.slice(0, -3);
   if (w.length > 4 && w.endsWith("ed")) return w.slice(0, -2);
   if (w.length > 4 && w.endsWith("es")) return w.slice(0, -2);
@@ -55,6 +57,7 @@ export class LocalHashEmbedder implements Embedder {
   public readonly name = "local-hash-v1";
   public readonly ghostThreshold = 0.18;
   public readonly relatedThreshold = 0.144;
+  public readonly searchFloor = 0.05;
 
   public async embed(texts: string[], _task?: EmbedTask): Promise<number[][]> {
     return texts.map((t) => this.embedOne(t));
@@ -89,6 +92,7 @@ export class GeminiEmbedder implements Embedder {
   // Calibrated on real notes: related pairs 0.86-0.95, unrelated topics <= ~0.83.
   public readonly ghostThreshold = 0.86;
   public readonly relatedThreshold = 0.84;
+  public readonly searchFloor = 0.62;
   private disabledUntil = 0;
 
   public constructor(private readonly apiKey: string | undefined) {}

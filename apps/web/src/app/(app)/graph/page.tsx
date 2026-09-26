@@ -1,4 +1,4 @@
-import { GraphView } from "@/components/graph/GraphView";
+import { GraphViewLazy } from "@/components/graph/GraphViewLazy";
 import { Network, ArrowLeft } from "lucide-react";
 import Link from "next/link";
 
@@ -17,7 +17,7 @@ export default function GraphPage() {
         <h1 className="font-medium text-sm">Knowledge Graph</h1>
       </div>
       <div className="flex-1 min-h-0">
-        <GraphView />
+        <GraphViewLazy />
       </div>
     </div>
   );

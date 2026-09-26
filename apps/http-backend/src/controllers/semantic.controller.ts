@@ -21,6 +21,7 @@ import {
 } from "../semantic/safe-fetch.js";
 import { htmlToMarkdown } from "../semantic/clip.js";
 import { snapshotDocument } from "../semantic/versions.js";
+import { bumpWorkspace } from "../semantic/index-cache.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const fail = (res: Response, code: number, msg: string) =>
@@ -291,7 +292,9 @@ export const semanticSearch = asyncHandler(
     const chunks = await searchChunks(wid, parsed.data.query, 20);
     const best = new Map<string, (typeof chunks)[number]>();
     for (const c of chunks) if (!best.has(c.sourceId)) best.set(c.sourceId, c);
-    const top = [...best.values()].filter((c) => c.score > 0.08).slice(0, 8);
+    const top = [...best.values()]
+      .filter((c) => c.score >= c.floor + 0.03)
+      .slice(0, 8);
 
     const [contents, atts] = await Promise.all([
       prisma.content.findMany({
