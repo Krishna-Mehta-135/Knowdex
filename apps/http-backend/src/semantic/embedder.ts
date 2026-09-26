@@ -6,6 +6,8 @@ export interface Embedder {
   readonly name: string;
   /** Cosine score above which two *documents* count as related. */
   readonly ghostThreshold: number;
+  /** Looser cutoff for the per-note "related" list. */
+  readonly relatedThreshold: number;
   embed(texts: string[], task: EmbedTask): Promise<number[][]>;
 }
 
@@ -52,6 +54,7 @@ const LOCAL_DIM = 512;
 export class LocalHashEmbedder implements Embedder {
   public readonly name = "local-hash-v1";
   public readonly ghostThreshold = 0.18;
+  public readonly relatedThreshold = 0.144;
 
   public async embed(texts: string[], _task?: EmbedTask): Promise<number[][]> {
     return texts.map((t) => this.embedOne(t));
@@ -83,7 +86,9 @@ const GEMINI_DIM = 384;
 /** Gemini `gemini-embedding-001` via REST, truncated to 384 dims (MRL). */
 export class GeminiEmbedder implements Embedder {
   public readonly name = "gemini-embedding-001-384";
-  public readonly ghostThreshold = 0.72;
+  // Calibrated on real notes: related pairs 0.86-0.95, unrelated topics <= ~0.83.
+  public readonly ghostThreshold = 0.86;
+  public readonly relatedThreshold = 0.84;
   private disabledUntil = 0;
 
   public constructor(private readonly apiKey: string | undefined) {}

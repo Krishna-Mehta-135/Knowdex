@@ -6,7 +6,7 @@ async function main() {
   const ws = await prisma.workspaceMember.findFirstOrThrow({
     where: { user: { email: process.argv[2] ?? "demo@knowdex.dev" } },
   });
-  const vs = await docVectors(ws.workspaceId);
+  const vs = (await docVectors(ws.workspaceId)).filter(() => true);
   const t = new Map(
     (
       await prisma.content.findMany({ where: { workspaceId: ws.workspaceId } })
@@ -20,7 +20,10 @@ async function main() {
         `${t.get(vs[i]!.docId)} <> ${t.get(vs[j]!.docId)}`,
       ]);
   rows.sort((a, b) => b[0] - a[0]);
-  for (const [s, n] of rows.slice(0, 16)) console.log(s.toFixed(3), n);
+  for (const [s, n] of rows
+    .filter(([, n]) => !/ note \d+/.test(n))
+    .slice(0, 20))
+    console.log(s.toFixed(3), n);
   await prisma.$disconnect();
 }
 main();

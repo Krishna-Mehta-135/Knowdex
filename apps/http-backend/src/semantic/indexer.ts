@@ -117,6 +117,9 @@ export async function sweepIndex(limit = 10): Promise<number> {
         text: extractPlainText(row.state),
       });
       done++;
+      // Stay under Gemini's per-minute embedding quota during bulk (re)indexing.
+      if (preferredEmbedder().name !== "local-hash-v1")
+        await new Promise((r) => setTimeout(r, 700));
     } catch (e) {
       console.error(`[index] failed for ${d.id}:`, (e as Error).message);
     }

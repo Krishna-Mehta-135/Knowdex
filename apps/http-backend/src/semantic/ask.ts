@@ -13,6 +13,21 @@ export interface AskSource {
 
 const MIN_SCORE = 0.05;
 
+/** GEMINI_MODEL first, then stable aliases that survive model retirements. */
+export function geminiModels(): string[] {
+  return [
+    ...new Set(
+      [
+        process.env.GEMINI_MODEL,
+        "gemini-flash-latest",
+        "gemini-2.5-flash-lite",
+        "gemini-3.1-flash-lite",
+        "gemini-3-flash-preview",
+      ].filter((m): m is string => Boolean(m)),
+    ),
+  ];
+}
+
 export async function retrieveSources(
   workspaceId: string,
   question: string,
@@ -99,13 +114,35 @@ export async function* streamAnswer(
   const key = process.env.GEMINI_API_KEY;
   if (key) {
     try {
-      const model = new GoogleGenerativeAI(key).getGenerativeModel({
-        model: "gemini-2.5-flash",
-      });
-      const result = await model.generateContentStream(
-        buildPrompt(question, sources, chunks),
-        signal ? { signal } : undefined,
-      );
+      const genAI = new GoogleGenerativeAI(key);
+      let result: Awaited<
+        ReturnType<
+          ReturnType<
+            GoogleGenerativeAI["getGenerativeModel"]
+          >["generateContentStream"]
+        >
+      > | null = null;
+      let lastErr: unknown;
+      // Models get retired / overloaded: try the configured one, then fallbacks.
+      for (const name of geminiModels()) {
+        // One quick retry per model: 503 "high demand" spikes are usually brief.
+        for (let attempt = 0; attempt < 2 && !result; attempt++) {
+          try {
+            result = await genAI
+              .getGenerativeModel({ model: name })
+              .generateContentStream(
+                buildPrompt(question, sources, chunks),
+                signal ? { signal } : undefined,
+              );
+          } catch (e) {
+            lastErr = e;
+            if (signal?.aborted) return;
+            if (attempt === 0) await new Promise((r) => setTimeout(r, 1200));
+          }
+        }
+        if (result) break;
+      }
+      if (!result) throw lastErr;
       let any = false;
       for await (const part of result.stream) {
         const t = part.text();

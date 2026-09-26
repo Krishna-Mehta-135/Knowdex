@@ -88,32 +88,58 @@ export class GeminiAIService implements AIService {
         return;
       }
 
-      // 3. Initialize Gemini model
-      // gemini-2.5-flash is the primary model for this environment.
-      const model = this.genAI.getGenerativeModel({
-        model: "gemini-2.5-flash",
-        systemInstruction: [
-          "You are a writing assistant for a Markdown-based Knowdex app.",
-          "Generate ONLY the requested content in clean Markdown.",
-          "Use proper Markdown: # for headings, **bold**, *italic*, - for lists, etc.",
-          "Do NOT include preamble, explanations, or meta-commentary.",
-          "Start directly with the content.",
-        ].join(" "),
-      });
+      // 3. Initialize Gemini model. Models get retired / overloaded, so try the
+      // configured one (GEMINI_MODEL) and then stable aliases.
+      const systemInstruction = [
+        "You are a writing assistant for a Markdown-based Knowdex app.",
+        "Generate ONLY the requested content in clean Markdown.",
+        "Use proper Markdown: # for headings, **bold**, *italic*, - for lists, etc.",
+        "Do NOT include preamble, explanations, or meta-commentary.",
+        "Start directly with the content.",
+      ].join(" ");
 
       // 4. Stream from Gemini.
       // Tokens are sent as raw text to the client. The client inserts them via
       // Tiptap's Markdown extension so formatting is preserved in the Y.Doc.
-      // We do NOT manipulate the Y.Doc here — that would produce unformatted
-      // plain text (e.g. "## Heading" as literal characters).
       const prompt = `Current document context:\n\n${currentContent}\n\nTask: ${request.prompt}`;
       console.log(
         `[AI] Starting stream for request ${request.requestId}, prompt length: ${request.prompt.length}, context length: ${currentContent.length}`,
       );
 
-      const result = await model.generateContentStream(prompt, {
-        signal: controller.signal,
-      });
+      const modelNames = [
+        ...new Set(
+          [
+            process.env.GEMINI_MODEL,
+            "gemini-flash-latest",
+            "gemini-2.5-flash-lite",
+            "gemini-3.1-flash-lite",
+            "gemini-3-flash-preview",
+          ].filter((m): m is string => Boolean(m)),
+        ),
+      ];
+      let result: Awaited<
+        ReturnType<
+          ReturnType<
+            GoogleGenerativeAI["getGenerativeModel"]
+          >["generateContentStream"]
+        >
+      > | null = null;
+      let lastErr: unknown;
+      for (const name of modelNames) {
+        try {
+          result = await this.genAI
+            .getGenerativeModel({ model: name, systemInstruction })
+            .generateContentStream(prompt, { signal: controller.signal });
+          break;
+        } catch (e) {
+          lastErr = e;
+          if (controller.signal.aborted) throw e;
+          console.warn(
+            `[AI] model ${name} failed: ${(e as Error).message?.slice(0, 120)}`,
+          );
+        }
+      }
+      if (!result) throw lastErr;
 
       const emptyUpdate = new Uint8Array(0);
 

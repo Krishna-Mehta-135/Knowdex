@@ -183,8 +183,7 @@ export const getRelated = asyncHandler(async (req: Request, res: Response) => {
     vectors.filter((v) => v.docId !== content.id),
     12,
   );
-  const threshold =
-    (embedderByName(self.embedder)?.ghostThreshold ?? 0.3) * 0.8;
+  const threshold = embedderByName(self.embedder)?.relatedThreshold ?? 0.24;
   const top = near.filter((n) => n.score >= threshold).slice(0, 6);
 
   const [titles, links] = await Promise.all([
