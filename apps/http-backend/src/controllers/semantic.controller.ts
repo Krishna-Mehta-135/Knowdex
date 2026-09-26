@@ -97,7 +97,12 @@ export const getWorkspaceGraph = asyncHandler(
       },
     });
     const ids = contents.map((c) => c.id);
-    const idSet = new Set(ids);
+    // Blank placeholder notes match each other perfectly; keep them out of suggestions.
+    const idSet = new Set(
+      contents
+        .filter((c) => c.title.trim().toLowerCase() !== "untitled")
+        .map((c) => c.id),
+    );
 
     const [links, attachments] = await Promise.all([
       prisma.documentLink.findMany({

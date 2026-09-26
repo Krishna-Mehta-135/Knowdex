@@ -104,7 +104,13 @@ export const getHome = asyncHandler(async (req: Request, res: Response) => {
     ).slice(0, 12);
     const ids = [...new Set(edges.flatMap((e) => [e.a, e.b]))];
     const titles = await prisma.content.findMany({
-      where: { id: { in: ids }, type: "document", workspaceId: wid },
+      where: {
+        id: { in: ids },
+        type: "document",
+        workspaceId: wid,
+        // Placeholder notes ("Untitled") are similar to each other by definition; not a useful suggestion.
+        NOT: { title: { in: ["Untitled", "untitled", ""], mode: "default" } },
+      },
       select: { id: true, title: true },
     });
     const titleOf = new Map(titles.map((t) => [t.id, t.title]));
