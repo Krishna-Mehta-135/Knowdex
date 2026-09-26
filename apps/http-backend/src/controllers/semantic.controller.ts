@@ -49,7 +49,7 @@ async function requireWorkspace(
 }
 
 /** Resolve a note the caller may access. */
-async function requireDoc(req: Request, res: Response) {
+export async function requireDoc(req: Request, res: Response) {
   const userId = req.user?.id;
   const docId = String(req.params.docId ?? "");
   if (!userId) return void fail(res, 401, "Unauthorized");

@@ -570,6 +570,60 @@ d("semantic API (real db)", () => {
     ).toBe(403);
   });
 
+  it("organize suggests tags (keyword fallback) and unlinked semantic neighbours", async () => {
+    const r = await (
+      await api(`/documents/${ids.cake}/organize`, { method: "POST" })
+    ).json();
+    expect(r.data.source).toBe("keywords");
+    expect(r.data.tags).toEqual(expect.arrayContaining(["cake"]));
+    // "Cake Frosting" is similar and not linked to "Chocolate Cake"
+    expect(r.data.links.map((l: { id: string }) => l.id)).toContain(ids.cake2);
+    // an already-linked neighbour is not suggested
+    const g = await (
+      await api(`/documents/${ids.graphs}/organize`, { method: "POST" })
+    ).json();
+    expect(g.data.links.map((l: { id: string }) => l.id)).not.toContain(
+      ids.linking,
+    );
+    expect(
+      (
+        await api(
+          `/documents/${ids.cake}/organize`,
+          { method: "POST" },
+          otherToken,
+        )
+      ).status,
+    ).toBe(403);
+  });
+
+  it("assist validates input, streams an error event without an AI key, and enforces access", async () => {
+    expect(
+      (await json(`/documents/${ids.cake}/assist`, { action: "nope" })).status,
+    ).toBe(400);
+    expect(
+      (await json(`/documents/${ids.cake}/assist`, { action: "custom" }))
+        .status,
+    ).toBe(400);
+    expect(
+      (await json(`/documents/${ids.cake}/assist`, { action: "improve" }))
+        .status,
+    ).toBe(400);
+    expect(
+      (
+        await json(
+          `/documents/${ids.cake}/assist`,
+          { action: "summarize" },
+          otherToken,
+        )
+      ).status,
+    ).toBe(403);
+    const res = await json(`/documents/${ids.cake}/assist`, {
+      action: "summarize",
+    });
+    expect(res.headers.get("content-type")).toMatch(/text\/event-stream/);
+    expect(await res.text()).toContain("event: error"); // GEMINI_API_KEY is blanked in tests
+  });
+
   it("clipper blocks private/loopback URLs (SSRF)", async () => {
     for (const url of [
       "http://127.0.0.1:8000/",

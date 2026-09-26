@@ -116,3 +116,52 @@ export async function askWorkspace(
     }
   }
 }
+
+/** Generic SSE POST: calls onEvent(event, data) for each frame. Resolves when the stream closes. */
+export async function streamSSE(
+  path: string,
+  body: unknown,
+  onEvent: (event: string, data: Record<string, unknown>) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const res = await fetch(`/api/kx/${path}`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!res.ok || !res.body) {
+    let message = `Request failed (${res.status})`;
+    try {
+      const j = (await res.json()) as { message?: string };
+      if (j.message) message = j.message;
+    } catch {
+      /* keep default */
+    }
+    onEvent("error", { message });
+    return;
+  }
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let i: number;
+    while ((i = buf.indexOf("\n\n")) !== -1) {
+      const frame = buf.slice(0, i);
+      buf = buf.slice(i + 2);
+      const ev = /^event: (.+)$/m.exec(frame)?.[1];
+      const data = /^data: (.+)$/m.exec(frame)?.[1];
+      if (ev && data) onEvent(ev, JSON.parse(data) as Record<string, unknown>);
+    }
+  }
+}
+
+export interface OrganizeResult {
+  tags: string[];
+  links: { id: string; title: string; score: number }[];
+  source: "ai" | "keywords";
+}

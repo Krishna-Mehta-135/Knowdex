@@ -17,14 +17,20 @@ import {
   SquareCheck,
   Quote,
   History,
+  Sparkles,
 } from "lucide-react";
 
 interface ToolbarProps {
   editor?: Editor | null;
   onOpenHistory?: () => void;
+  onOpenAssist?: () => void;
 }
 
-export function EditorToolbar({ editor, onOpenHistory }: ToolbarProps) {
+export function EditorToolbar({
+  editor,
+  onOpenHistory,
+  onOpenAssist,
+}: ToolbarProps) {
   const manager = useSyncManager();
   const { undo, redo, canUndo, canRedo } = useUndoManager(manager.doc);
 
@@ -209,12 +215,23 @@ export function EditorToolbar({ editor, onOpenHistory }: ToolbarProps) {
           )}
         </div>
       ))}
+      {onOpenAssist && (
+        <button
+          onClick={onOpenAssist}
+          aria-label="AI assistant"
+          title="AI assistant"
+          className="ml-auto flex items-center gap-1.5 rounded border border-transparent px-2.5 py-1.5 text-xs text-white/70 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--sb-accent))]"
+        >
+          <Sparkles size={16} />{" "}
+          <span className="hidden sm:inline">Assist</span>
+        </button>
+      )}
       {onOpenHistory && (
         <button
           onClick={onOpenHistory}
           aria-label="Version history"
           title="Version history"
-          className="ml-auto flex items-center gap-1.5 rounded border border-transparent px-2.5 py-1.5 text-xs text-white/70 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--sb-accent))]"
+          className="flex items-center gap-1.5 rounded border border-transparent px-2.5 py-1.5 text-xs text-white/70 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--sb-accent))]"
         >
           <History size={16} />{" "}
           <span className="hidden sm:inline">History</span>

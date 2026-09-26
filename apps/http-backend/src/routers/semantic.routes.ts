@@ -1,5 +1,6 @@
 import express, { Router } from "express";
 import { importNotes } from "../controllers/import.controller.js";
+import { assistNote, organizeNote } from "../controllers/assist.controller.js";
 import { rateLimit } from "../middlewares/rateLimit.js";
 import { protect } from "../middlewares/auth.middleware.js";
 import {
@@ -28,6 +29,7 @@ const limits = {
   fetch: rateLimit({ name: "web fetch", max: 20, windowMs: 60_000 }),
   bulk: rateLimit({ name: "import", max: 10, windowMs: 10 * 60_000 }),
   upload: rateLimit({ name: "upload", max: 30, windowMs: 60_000 }),
+  assist: rateLimit({ name: "assistant", max: 30, windowMs: 60_000 }),
   version: rateLimit({ name: "version", max: 20, windowMs: 60_000 }),
 };
 
@@ -42,6 +44,8 @@ semanticRouter.post("/workspaces/:workspaceId/ask", limits.ask, askWorkspace);
 
 semanticRouter.get("/documents/:docId/related", getRelated);
 semanticRouter.get("/documents/:docId/unlinked-mentions", getUnlinkedMentions);
+semanticRouter.post("/documents/:docId/assist", limits.assist, assistNote);
+semanticRouter.post("/documents/:docId/organize", limits.assist, organizeNote);
 semanticRouter.get("/documents/:docId/versions", listVersions);
 semanticRouter.post(
   "/documents/:docId/versions",

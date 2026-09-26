@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { llmAvailable, streamGemini } from "./llm.js";
 import { prisma } from "@repo/db";
 import { searchChunks, type ScoredChunk } from "./search.js";
 
@@ -9,21 +9,6 @@ export interface AskSource {
   title: string;
   snippet: string;
   score: number;
-}
-
-/** GEMINI_MODEL first, then stable aliases that survive model retirements. */
-export function geminiModels(): string[] {
-  return [
-    ...new Set(
-      [
-        process.env.GEMINI_MODEL,
-        "gemini-flash-latest",
-        "gemini-2.5-flash-lite",
-        "gemini-3.1-flash-lite",
-        "gemini-3-flash-preview",
-      ].filter((m): m is string => Boolean(m)),
-    ),
-  ];
 }
 
 export async function retrieveSources(
@@ -116,49 +101,21 @@ export async function* streamAnswer(
     };
     return;
   }
-  const key = process.env.GEMINI_API_KEY;
-  if (key) {
+  if (llmAvailable()) {
+    let any = false;
     try {
-      const genAI = new GoogleGenerativeAI(key);
-      let result: Awaited<
-        ReturnType<
-          ReturnType<
-            GoogleGenerativeAI["getGenerativeModel"]
-          >["generateContentStream"]
-        >
-      > | null = null;
-      let lastErr: unknown;
-      // Models get retired / overloaded: try the configured one, then fallbacks.
-      for (const name of geminiModels()) {
-        // One quick retry per model: 503 "high demand" spikes are usually brief.
-        for (let attempt = 0; attempt < 2 && !result; attempt++) {
-          try {
-            result = await genAI
-              .getGenerativeModel({ model: name })
-              .generateContentStream(
-                buildPrompt(question, sources, chunks),
-                signal ? { signal } : undefined,
-              );
-          } catch (e) {
-            lastErr = e;
-            if (signal?.aborted) return;
-            if (attempt === 0) await new Promise((r) => setTimeout(r, 1200));
-          }
-        }
-        if (result) break;
-      }
-      if (!result) throw lastErr;
-      let any = false;
-      for await (const part of result.stream) {
-        const t = part.text();
-        if (t) {
-          any = true;
-          yield { token: t, mode: "gemini" };
-        }
+      for await (const t of streamGemini(
+        buildPrompt(question, sources, chunks),
+        { signal },
+      )) {
+        any = true;
+        yield { token: t, mode: "gemini" };
       }
       if (any) return;
     } catch (e) {
       if (signal?.aborted) return;
+      // Mid-answer failure: keep what was streamed rather than appending a second answer.
+      if (any) return;
       console.warn(
         "[ask] gemini failed, using extractive answer:",
         (e as Error).message,

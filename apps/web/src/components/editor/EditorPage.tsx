@@ -36,6 +36,10 @@ import { EditorToolbar } from "./EditorToolbar";
 import dynamic from "next/dynamic";
 
 // History pulls in a second editor + Yjs conversion; load it only when opened.
+const AssistPanel = dynamic(
+  () => import("./AssistPanel").then((m) => m.AssistPanel),
+  { ssr: false },
+);
 const VersionHistory = dynamic(
   () => import("./VersionHistory").then((m) => m.VersionHistory),
   { ssr: false },
@@ -95,6 +99,7 @@ function EditorContentWrapper({
     onCancel: () => void;
   } | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [assistOpen, setAssistOpen] = useState(false);
   const slashKeyRef = useRef<(e: KeyboardEvent) => boolean>(() => false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -432,6 +437,7 @@ function EditorContentWrapper({
       <EditorToolbar
         editor={editor}
         onOpenHistory={() => setHistoryOpen(true)}
+        onOpenAssist={() => setAssistOpen((o) => !o)}
       />
 
       {/* Editor + AI panel */}
@@ -460,6 +466,13 @@ function EditorContentWrapper({
         />
 
         <AIPanel editor={editor} />
+        {assistOpen && (
+          <AssistPanel
+            docId={docId}
+            editor={editor}
+            onClose={() => setAssistOpen(false)}
+          />
+        )}
         {historyOpen && (
           <VersionHistory
             docId={docId}
