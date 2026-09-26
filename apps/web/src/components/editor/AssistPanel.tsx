@@ -18,6 +18,7 @@ import {
 import { kx, streamSSE, type OrganizeResult } from "@/lib/kx/api";
 import { useDocuments } from "@/lib/documents/useDocuments";
 import { linkifyWikiText } from "@/lib/editor/linkifyWiki";
+import { useTypewriter } from "@/lib/ui/typewriter";
 
 type Action =
   | "summarize"
@@ -52,6 +53,21 @@ interface Range {
 }
 
 /** Side panel: AI actions on the open note + tag/link suggestions. */
+function TypedOutput({ text, running }: { text: string; running: boolean }) {
+  const { shown, typing } = useTypewriter(text);
+  return (
+    <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap font-sans text-sm">
+      {shown}
+      {(running || typing) && (
+        <span
+          aria-hidden
+          className="ml-0.5 inline-block h-3.5 w-[2px] translate-y-0.5 animate-pulse bg-fuchsia-300"
+        />
+      )}
+    </pre>
+  );
+}
+
 export function AssistPanel({
   docId,
   editor,
@@ -256,11 +272,7 @@ export function AssistPanel({
                 <Loader2 size={12} className="animate-spin" /> Thinking…
               </p>
             )}
-            {output && (
-              <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap font-sans text-sm">
-                {output}
-              </pre>
-            )}
+            {output && <TypedOutput text={output} running={running} />}
             {error && <p className="text-sm text-red-300">{error}</p>}
             {running ? (
               <button

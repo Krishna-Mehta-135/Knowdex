@@ -36,6 +36,11 @@ export function bumpWorkspace(workspaceId: string): void {
   cache.delete(workspaceId);
 }
 
+/** Monotonic per-workspace counter; changes whenever anything in the workspace is re-indexed. */
+export function workspaceVersion(workspaceId: string): number {
+  return versions.get(workspaceId) ?? 0;
+}
+
 export function stemmedTokens(text: string): Set<string> {
   return new Set(tokenize(text).map(stem));
 }

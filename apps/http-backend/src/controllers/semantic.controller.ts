@@ -21,7 +21,12 @@ import {
 } from "../semantic/safe-fetch.js";
 import { htmlToMarkdown } from "../semantic/clip.js";
 import { snapshotDocument } from "../semantic/versions.js";
-import { bumpWorkspace } from "../semantic/index-cache.js";
+import {
+  answerKey,
+  getCachedAnswer,
+  putCachedAnswer,
+} from "../semantic/answer-cache.js";
+import { bumpWorkspace, workspaceVersion } from "../semantic/index-cache.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const fail = (res: Response, code: number, msg: string) =>
@@ -357,12 +362,24 @@ export const askWorkspace = asyncHandler(
     res.on("close", () => abort.abort());
 
     try {
+      const key = answerKey(wid, workspaceVersion(wid), parsed.data.question);
+      const hit = getCachedAnswer(key);
+      if (hit) {
+        // Same question, nothing re-indexed since: replay instantly, no model call.
+        send("sources", hit.sources);
+        for (let i = 0; i < hit.text.length; i += 48) {
+          send("token", { text: hit.text.slice(i, i + 48) });
+        }
+        send("done", { mode: "gemini", cached: true });
+        return;
+      }
       const { sources, chunks } = await retrieveSources(
         wid,
         parsed.data.question,
       );
       send("sources", sources);
       let mode = "extractive";
+      let full = "";
       for await (const part of streamAnswer(
         parsed.data.question,
         sources,
@@ -370,7 +387,11 @@ export const askWorkspace = asyncHandler(
         abort.signal,
       )) {
         mode = part.mode;
+        full += part.token;
         send("token", { text: part.token });
+      }
+      if (mode === "gemini" && !abort.signal.aborted) {
+        putCachedAnswer(key, full, sources);
       }
       send("done", { mode });
     } catch (e) {

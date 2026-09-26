@@ -2,6 +2,9 @@ import { DocumentManager } from "./document-manager.js";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { AIWritingRequest, AIChunk } from "@repo/types";
 
+/** Models temporarily skipped after 404/429/503 (model name -> epoch ms). */
+const modelCooldownUntil = new Map<string, number>();
+
 export interface AIService {
   startWriting(request: AIWritingRequest): AsyncGenerator<AIChunk>;
   cancelWriting(requestId: string): void;
@@ -110,13 +113,14 @@ export class GeminiAIService implements AIService {
         ...new Set(
           [
             process.env.GEMINI_MODEL,
-            "gemini-flash-latest",
-            "gemini-2.5-flash-lite",
-            "gemini-3.1-flash-lite",
             "gemini-3-flash-preview",
+            "gemini-flash-latest",
+            "gemini-3.1-flash-lite",
           ].filter((m): m is string => Boolean(m)),
         ),
-      ];
+      ].filter((m) => (modelCooldownUntil.get(m) ?? 0) <= Date.now());
+      if (modelNames.length === 0)
+        modelNames.push("gemini-3-flash-preview", "gemini-flash-latest");
       let result: Awaited<
         ReturnType<
           ReturnType<
@@ -126,18 +130,44 @@ export class GeminiAIService implements AIService {
       > | null = null;
       let lastErr: unknown;
       for (const name of modelNames) {
-        try {
-          result = await this.genAI
-            .getGenerativeModel({ model: name, systemInstruction })
-            .generateContentStream(prompt, { signal: controller.signal });
-          break;
-        } catch (e) {
-          lastErr = e;
-          if (controller.signal.aborted) throw e;
-          console.warn(
-            `[AI] model ${name} failed: ${(e as Error).message?.slice(0, 120)}`,
-          );
+        // Thinking off (faster first token); retry once without it if a model rejects the field.
+        for (const fast of [true, false]) {
+          try {
+            result = await this.genAI
+              .getGenerativeModel({
+                model: name,
+                systemInstruction,
+                ...(fast && {
+                  generationConfig: {
+                    thinkingConfig: { thinkingBudget: 0 },
+                  } as Record<string, unknown>,
+                }),
+              })
+              .generateContentStream(prompt, { signal: controller.signal });
+            modelCooldownUntil.delete(name);
+            break;
+          } catch (e) {
+            lastErr = e;
+            if (controller.signal.aborted) throw e;
+            const status = (e as { status?: number }).status;
+            console.warn(
+              `[AI] model ${name} failed (${status ?? "?"}): ${(e as Error).message?.slice(0, 120)}`,
+            );
+            if (status === 400 && fast) continue;
+            // Quotas are per model and models get retired: skip a failing model for a while.
+            const ms =
+              status === 404
+                ? 3_600_000
+                : status === 429
+                  ? 120_000
+                  : status === 503 || status === 500
+                    ? 20_000
+                    : 0;
+            if (ms > 0) modelCooldownUntil.set(name, Date.now() + ms);
+            break;
+          }
         }
+        if (result) break;
       }
       if (!result) throw lastErr;
 

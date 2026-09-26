@@ -7,6 +7,7 @@ import { FileText, Loader2, Send, Sparkles, Square } from "lucide-react";
 import { useWorkspace } from "@/lib/workspaces/WorkspaceProvider";
 import { askWorkspace, type AskSource } from "@/lib/kx/api";
 import { parseAnswer, type Inline } from "@/lib/ask/answerBlocks";
+import { useTypewriter } from "@/lib/ui/typewriter";
 
 interface Turn {
   id: number;
@@ -64,10 +65,22 @@ function Inlines({
 }
 
 /** Answer body: light Markdown with clickable citation chips. */
-function Answer({ text, sources }: { text: string; sources: AskSource[] }) {
+function Answer({
+  text,
+  sources,
+  streaming,
+}: {
+  text: string;
+  sources: AskSource[];
+  streaming: boolean;
+}) {
+  // Reveal word by word, even when the model delivers large chunks.
+  const { shown, typing } = useTypewriter(text);
+  const blocks = parseAnswer(shown);
+  const caret = streaming || typing;
   return (
     <div className="space-y-2.5 text-sm leading-relaxed text-[hsl(var(--sb-text))]">
-      {parseAnswer(text).map((b, i) => {
+      {blocks.map((b, i) => {
         if (b.t === "p")
           return (
             <p key={i}>
@@ -94,6 +107,12 @@ function Answer({ text, sources }: { text: string; sources: AskSource[] }) {
           </List>
         );
       })}
+      {caret && (
+        <span
+          aria-hidden
+          className="inline-block h-4 w-[2px] translate-y-0.5 animate-pulse bg-[hsl(var(--sb-accent))]"
+        />
+      )}
     </div>
   );
 }
@@ -210,7 +229,13 @@ export function AskView() {
                   notes…
                 </div>
               )}
-              {t.answer && <Answer text={t.answer} sources={t.sources} />}
+              {t.answer && (
+                <Answer
+                  text={t.answer}
+                  sources={t.sources}
+                  streaming={t.status === "streaming"}
+                />
+              )}
               {t.status === "error" && (
                 <p className="text-sm text-red-300">
                   Something went wrong: {t.error}
