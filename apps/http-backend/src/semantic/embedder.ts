@@ -165,6 +165,8 @@ export function embedderByName(name: string): Embedder | null {
 
 /** Best available embedder right now. */
 export function preferredEmbedder(): Embedder {
+  // Dev/test opt-out so local runs don't spend the shared Gemini embedding quota.
+  if (process.env.EMBEDDINGS_PROVIDER === "local") return local;
   const g = getGemini();
   return g.available ? g : local;
 }

@@ -211,7 +211,7 @@ Integration tests create and delete their own rows but **must not** be pointed a
 
 ### Operational notes
 
-- **Gemini**: set `GEMINI_API_KEY`; optionally `GEMINI_MODEL` (falls back through stable model aliases). Embedding thresholds are calibrated for `gemini-embedding-001`; without a key a local embedder is used.
+- **Gemini**: set `GEMINI_API_KEY` (free tier allows ~1000 embedding requests/day — set `EMBEDDINGS_PROVIDER=local` on dev machines so they don't use it up); optionally `GEMINI_MODEL` (falls back through stable model aliases). Embedding thresholds are calibrated for `gemini-embedding-001`; without a key a local embedder is used.
 - **Rate limits** (per user, in memory): Ask 20/min, assistant 30/min, imports 10/10min, uploads 30/min, public pages 240/min/IP. `RATE_LIMIT_DISABLED=1` turns them off (tests).
 - **Search cache**: chunk vectors are cached per workspace in the backend process and invalidated on re-index; a multi-instance deployment should move this to a shared store or pgvector.
 - **Offline**: the service worker registers in production builds only. Sign-out clears cached user data.

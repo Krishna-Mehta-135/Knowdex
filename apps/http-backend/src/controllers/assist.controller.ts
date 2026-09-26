@@ -56,7 +56,8 @@ export const assistNote = asyncHandler(async (req: Request, res: Response) => {
   }
 
   res.writeHead(200, {
-    "Content-Type": "text/event-stream; charset=utf-8",
+    // Exactly this value (no charset): Caddy only auto-flushes SSE on an exact match.
+    "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache, no-transform",
     Connection: "keep-alive",
     "X-Accel-Buffering": "no",
