@@ -295,3 +295,27 @@ export const updateRow = asyncHandler(async (req: Request, res: Response) => {
   });
   return res.status(200).json(new ApiResponse(200, rowOf(row), "Row updated"));
 });
+
+/** One row plus its database (schema), for the property panel on a row's own page. */
+export const getRow = asyncHandler(async (req: Request, res: Response) => {
+  const db = await requireDatabase(req, res);
+  if (!db) return;
+  const rowId = String(req.params.rowId ?? "");
+  if (!UUID.test(rowId)) return fail(res, 400, "Invalid rowId");
+  const row = await prisma.content.findFirst({
+    where: { id: rowId, databaseId: db.id },
+    select: {
+      id: true,
+      title: true,
+      props: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+  if (!row) return fail(res, 404, "Row not found");
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(200, { database: publicDb(db), row: rowOf(row) }, "Row"),
+    );
+});

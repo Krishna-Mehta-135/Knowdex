@@ -22,6 +22,9 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
+  // The app ships its own dark theme; this stops the Dark Reader extension from
+  // re-colouring it (flattened accents, hydration mismatches).
+  other: { "darkreader-lock": "1" },
   title: "Knowdex",
   description: "Your digital knowledge companion",
   icons: {

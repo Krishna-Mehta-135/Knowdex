@@ -54,6 +54,7 @@ export function DatabaseView({ id }: { id: string }) {
   const [filterProp, setFilterProp] = useState("");
   const [filterOpt, setFilterOpt] = useState("");
   const [menu, setMenu] = useState<string | null>(null); // property id | "__add"
+  const [viewMenu, setViewMenu] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -243,23 +244,48 @@ export function DatabaseView({ id }: { id: string }) {
               {v.name}
             </button>
           ))}
-          <button
-            aria-label="Add table view"
-            title="Add table view"
-            onClick={() => addView("table")}
-            className="rounded p-1 text-[hsl(var(--sb-text-faint))] hover:bg-[hsl(var(--sb-bg-hover))]"
-          >
-            <Table2 size={13} />
-            <span className="sr-only">Add table view</span>
-          </button>
-          <button
-            aria-label="Add board view"
-            title="Add board view"
-            onClick={() => addView("board")}
-            className="rounded p-1 text-[hsl(var(--sb-text-faint))] hover:bg-[hsl(var(--sb-bg-hover))]"
-          >
-            <Kanban size={13} />
-          </button>
+          <div className="relative">
+            <button
+              aria-label="Add view"
+              aria-haspopup="menu"
+              aria-expanded={viewMenu}
+              onClick={() => setViewMenu((v) => !v)}
+              className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-[hsl(var(--sb-text-faint))] hover:bg-[hsl(var(--sb-bg-hover))] hover:text-white"
+            >
+              <Plus size={12} /> View
+            </button>
+            {viewMenu && (
+              <>
+                <div
+                  className="fixed inset-0 z-30"
+                  onClick={() => setViewMenu(false)}
+                />
+                <div
+                  role="menu"
+                  className="absolute left-0 top-full z-40 mt-1 w-40 rounded-xl border border-[hsl(var(--sb-border))] bg-[hsl(var(--sb-bg-panel))] p-1 shadow-2xl"
+                >
+                  {(["table", "board"] as const).map((t) => (
+                    <button
+                      key={t}
+                      role="menuitem"
+                      onClick={() => {
+                        setViewMenu(false);
+                        addView(t);
+                      }}
+                      className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm text-[hsl(var(--sb-text-muted))] hover:bg-[hsl(var(--sb-bg-hover))] hover:text-white"
+                    >
+                      {t === "table" ? (
+                        <Table2 size={14} />
+                      ) : (
+                        <Kanban size={14} />
+                      )}{" "}
+                      {t === "table" ? "Table" : "Board"}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
           {db.views.length > 1 && (
             <button
               aria-label="Delete this view"

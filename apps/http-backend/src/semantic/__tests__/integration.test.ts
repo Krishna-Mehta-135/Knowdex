@@ -530,6 +530,18 @@ d("semantic API (real db)", () => {
       (await patch({ props: { status: "done" } }, otherToken)).status,
     ).toBe(403);
 
+    // single-row read (used by the note's property panel)
+    const one = (await (await api(`/databases/${db.id}/rows/${row.id}`)).json())
+      .data;
+    expect(one.row.id).toBe(row.id);
+    expect(one.database.schema).toHaveLength(4);
+    expect((await api(`/databases/${db.id}/rows/${ids.cake}`)).status).toBe(
+      404,
+    ); // not a row of this db
+    expect(
+      (await api(`/databases/${db.id}/rows/${row.id}`, {}, otherToken)).status,
+    ).toBe(403);
+
     // rows appear in get + counts in list
     const got = (await (await api(`/databases/${db.id}`)).json()).data;
     expect(got.rows).toHaveLength(1);
@@ -682,6 +694,26 @@ d("semantic API (real db)", () => {
     expect((await pub(`/attachments/${ids.cake}/${att.id}`)).status).toBe(404); // unpublished
     expect((await pub(`/notes/${ids.cake}`)).status).toBe(404);
     await api(`/attachments/${att.id}`, { method: "DELETE" });
+  });
+
+  it("home: counts, recent notes with snippets, suggestions, databases; members only", async () => {
+    const r = await api(`/workspaces/${wid}/home`);
+    expect(r.status).toBe(200);
+    const h = (await r.json()).data;
+    expect(h.counts.notes).toBeGreaterThanOrEqual(4);
+    expect(h.counts.links).toBeGreaterThanOrEqual(1);
+    expect(h.recent.length).toBeGreaterThan(0);
+    expect(h.recent.length).toBeLessThanOrEqual(8);
+    const times = h.recent.map((x: { updatedAt: number }) => x.updatedAt);
+    expect([...times].sort((a, b) => b - a)).toEqual(times); // newest first
+    const cake = h.recent.find((x: { id: string }) => x.id === ids.cake2);
+    if (cake) expect(cake.snippet).not.toMatch(/^Cake Frosting/); // title line stripped
+    expect(Array.isArray(h.suggestions)).toBe(true);
+    expect(Array.isArray(h.databases)).toBe(true);
+    expect((await api(`/workspaces/${wid}/home`, {}, otherToken)).status).toBe(
+      403,
+    );
+    expect((await api(`/workspaces/not-a-uuid/home`)).status).toBe(400);
   });
 
   it("clipper blocks private/loopback URLs (SSRF)", async () => {

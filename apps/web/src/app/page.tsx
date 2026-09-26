@@ -25,6 +25,9 @@ import {
   Hash,
   Type,
   Quote,
+  MessageSquareText,
+  Table2,
+  CloudOff,
 } from "lucide-react";
 
 // ─── Physics Graph (Obsidian-style) ─────────────────────────────────────────
@@ -535,6 +538,114 @@ function CommandPaletteVisual() {
 }
 
 // ─── Embedded App Editor ──────────────────────────────────────────────────────
+
+function AskVisual() {
+  return (
+    <div className="flex items-center justify-center w-full h-full p-5">
+      <div className="w-full max-w-[300px] space-y-2.5">
+        <div className="ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-sm bg-indigo-500/20 px-3 py-1.5 text-[11px] text-zinc-200">
+          How do we keep edits from conflicting?
+        </div>
+        <div
+          className="rounded-2xl rounded-bl-sm border border-[hsl(240,10%,14%)] bg-[hsl(240,10%,6%)] p-3"
+          style={{ boxShadow: "0 0 40px -14px rgba(99,102,241,0.25)" }}
+        >
+          <p className="text-[11px] leading-relaxed text-zinc-300">
+            CRDTs merge concurrent edits without conflicts, even offline
+            <span className="mx-0.5 inline-flex h-3.5 min-w-3.5 items-center justify-center rounded bg-indigo-500/25 px-1 text-[9px] font-semibold text-indigo-300">
+              1
+            </span>
+            and WebSockets carry the updates
+            <span className="mx-0.5 inline-flex h-3.5 min-w-3.5 items-center justify-center rounded bg-indigo-500/25 px-1 text-[9px] font-semibold text-indigo-300">
+              2
+            </span>
+            .
+          </p>
+          <div className="mt-2.5 flex flex-wrap gap-1.5 border-t border-[hsl(240,10%,12%)] pt-2">
+            {["CRDTs", "WebSockets"].map((t, i) => (
+              <span
+                key={t}
+                className="flex items-center gap-1 rounded-md border border-[hsl(240,10%,14%)] px-1.5 py-0.5 text-[10px] text-zinc-500"
+              >
+                <b className="text-indigo-400">{i + 1}</b>
+                <FileText size={9} /> {t}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DatabaseVisual() {
+  const cols = [
+    { name: "To do", tint: "bg-white/10 text-zinc-300", cards: ["Write docs"] },
+    {
+      name: "In progress",
+      tint: "bg-sky-500/20 text-sky-200",
+      cards: ["Ship graph", "Kanban view"],
+    },
+    {
+      name: "Done",
+      tint: "bg-emerald-500/20 text-emerald-200",
+      cards: ["Schema"],
+    },
+  ];
+  return (
+    <div className="flex items-center justify-center w-full h-full p-5">
+      <div className="flex w-full max-w-[330px] gap-2">
+        {cols.map((c) => (
+          <div
+            key={c.name}
+            className="flex-1 rounded-xl border border-[hsl(240,10%,14%)] bg-[hsl(240,10%,6%)] p-2"
+          >
+            <div className="mb-2 flex items-center gap-1.5">
+              <span className={`rounded px-1.5 py-0.5 text-[9px] ${c.tint}`}>
+                {c.name}
+              </span>
+              <span className="text-[9px] text-zinc-600">{c.cards.length}</span>
+            </div>
+            <div className="space-y-1.5">
+              {c.cards.map((card) => (
+                <div
+                  key={card}
+                  className="rounded-lg border border-[hsl(240,10%,12%)] bg-[hsl(240,10%,4%)] px-2 py-1.5 text-[10px] text-zinc-300"
+                >
+                  {card}
+                  <div className="mt-1 text-[9px] text-zinc-600">📅 Oct 9</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function OfflineVisual() {
+  return (
+    <div className="flex items-center justify-center w-full h-full p-5">
+      <div className="w-full max-w-[300px] space-y-2.5">
+        <div className="flex items-center gap-2 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-[10px] text-amber-100">
+          <CloudOff size={12} /> You’re offline. Edits are saved on this device.
+        </div>
+        <div className="rounded-xl border border-[hsl(240,10%,14%)] bg-[hsl(240,10%,6%)] p-3">
+          <div className="h-2 w-2/3 rounded bg-zinc-700" />
+          <div className="mt-2 h-1.5 w-full rounded bg-zinc-800" />
+          <div className="mt-1.5 h-1.5 w-4/5 rounded bg-zinc-800" />
+          <div className="mt-3 text-[9px] text-zinc-600">
+            3 changes waiting to sync
+          </div>
+        </div>
+        <div className="flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-[10px] text-emerald-200">
+          ✓ Back online — all changes synced.
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function BlockGutter() {
   return (
@@ -1378,7 +1489,7 @@ export default function HomePage() {
             </h2>
             <p className="text-zinc-500 text-lg max-w-lg">
               Links are first-class citizens. Your knowledge builds a web, not a
-              hierarchy.
+              hierarchy — and it answers back.
             </p>
           </div>
 
@@ -1398,8 +1509,8 @@ export default function HomePage() {
                   icon: <Brain size={20} />,
                   accent: "violet",
                   title: "Graph View",
-                  desc: "Visualize your entire knowdex in one canvas. Spot emerging clusters, unearth hidden connections, and rediscover forgotten ideas.",
-                  tags: ["WebGL Rendered", "Interactive"],
+                  desc: "Visualize your entire knowdex in one canvas. Clusters get their own colour, and ghost links surface notes that are about the same thing but not yet connected.",
+                  tags: ["Ghost links", "Interactive"],
                   reverse: true,
                   visual: <GraphViewVisual />,
                 },
@@ -1412,11 +1523,38 @@ export default function HomePage() {
                   reverse: false,
                   visual: <CommandPaletteVisual />,
                 },
+                {
+                  icon: <MessageSquareText size={20} />,
+                  accent: "violet",
+                  title: "Ask Your Notes",
+                  desc: "Ask a question in plain language and get an answer written from your own notes and PDFs, with numbered citations you can click to open the source.",
+                  tags: ["Cited answers", "PDF search"],
+                  reverse: true,
+                  visual: <AskVisual />,
+                },
+                {
+                  icon: <Table2 size={20} />,
+                  accent: "indigo",
+                  title: "Databases & Boards",
+                  desc: "Turn any set of notes into a database with typed properties, then switch between table and kanban views. Every row is still a full note.",
+                  tags: ["Table", "Kanban"],
+                  reverse: false,
+                  visual: <DatabaseVisual />,
+                },
+                {
+                  icon: <CloudOff size={20} />,
+                  accent: "violet",
+                  title: "Offline-first & Publish",
+                  desc: "Keep writing on a plane: edits are stored on your device and merged when you reconnect. Flip a switch to publish any note as a clean public page.",
+                  tags: ["Works offline", "Public pages"],
+                  reverse: true,
+                  visual: <OfflineVisual />,
+                },
               ] as const
             ).map((f, i) => (
               <div
                 key={f.title}
-                className={`sb-observe flex flex-col ${f.reverse ? "lg:flex-row-reverse" : "lg:flex-row"} items-center gap-10 lg:gap-20 py-16 lg:py-20 border-t ${i === 2 ? "border-b " : ""}border-white/[0.05]`}
+                className={`sb-observe flex flex-col ${f.reverse ? "lg:flex-row-reverse" : "lg:flex-row"} items-center gap-10 lg:gap-20 py-16 lg:py-20 border-t ${i === 5 ? "border-b " : ""}border-white/[0.05]`}
                 style={{ animationDelay: `${i * 0.1}s` }}
               >
                 <div className="w-full lg:flex-1">

@@ -36,6 +36,7 @@ import {
   Sparkles,
   Upload,
   Table2,
+  Home,
 } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth/useAuth";
@@ -225,6 +226,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       (currentDocId === "new" ? "New Note" : null)
     );
   }, [currentDocId, documents]);
+
+  // Non-note pages get their own name instead of "Untitled".
+  const routeTitle = useMemo(() => {
+    const p = pathname ?? "";
+    if (p === "/documents") return "Home";
+    if (p.startsWith("/graph")) return "Knowledge graph";
+    if (p.startsWith("/ask")) return "Ask your notes";
+    if (p.startsWith("/databases")) return "Databases";
+    if (p.startsWith("/import")) return "Import & clip";
+    if (p.startsWith("/settings")) return "Settings";
+    return null;
+  }, [pathname]);
 
   useEffect(() => {
     if (resolvedTitle) {
@@ -587,6 +600,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
         <div className="flex-1 overflow-y-auto overflow-x-hidden p-2 space-y-4 sb-sidebar-no-scrollbar">
           <div className="space-y-0.5">
+            <SidebarItem
+              icon={<Home size={14} />}
+              label="Home"
+              active={pathname === "/documents"}
+              onClick={() => {
+                router.push("/documents");
+                if (window.innerWidth < 768) setSidebarOpen(false);
+              }}
+            />
             {/* Recent */}
             <SidebarItem
               icon={<Clock size={14} />}
@@ -658,6 +680,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <SidebarItem
               icon={<Network size={14} />}
               label="Graph View"
+              active={pathname?.startsWith("/graph") ?? false}
               onClick={() => {
                 router.push("/graph");
                 if (window.innerWidth < 768) setSidebarOpen(false);
@@ -666,6 +689,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <SidebarItem
               icon={<Table2 size={14} />}
               label="Databases"
+              active={pathname?.startsWith("/databases") ?? false}
               onClick={() => {
                 router.push("/databases");
                 if (window.innerWidth < 768) setSidebarOpen(false);
@@ -674,6 +698,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <SidebarItem
               icon={<Sparkles size={14} />}
               label="Ask your notes"
+              active={pathname?.startsWith("/ask") ?? false}
               onClick={() => {
                 router.push("/ask");
                 if (window.innerWidth < 768) setSidebarOpen(false);
@@ -682,6 +707,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <SidebarItem
               icon={<Upload size={14} />}
               label="Import & clip"
+              active={pathname?.startsWith("/import") ?? false}
               onClick={() => {
                 router.push("/import");
                 if (window.innerWidth < 768) setSidebarOpen(false);
@@ -809,7 +835,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 className="text-[hsl(var(--sb-text-faint))] hidden xs:inline shrink-0"
               />
               <span className="text-white font-medium truncate max-w-[120px] sm:max-w-[200px] text-sm md:text-base">
-                {resolvedTitle || "Untitled"}
+                {currentDocId
+                  ? resolvedTitle || "Untitled"
+                  : (routeTitle ?? "Untitled")}
               </span>
             </div>
           </div>
@@ -1051,6 +1079,8 @@ function SidebarItem({
   expandable,
   expanded,
   onToggle,
+  active,
+  hint,
 }: {
   icon: React.ReactNode;
   label: string;
@@ -1058,17 +1088,36 @@ function SidebarItem({
   expandable?: boolean;
   expanded?: boolean;
   onToggle?: () => void;
+  /** Current route: gets the accent treatment. */
+  active?: boolean;
+  /** Small trailing label (e.g. a shortcut). */
+  hint?: string;
 }) {
   const handleClick = expandable ? onToggle : onClick;
   return (
     <div
       onClick={handleClick}
-      className="flex items-center gap-2 px-3 py-1.5 rounded-md text-sm text-[hsl(var(--sb-text-muted))] hover:text-white hover:bg-[hsl(var(--sb-bg-hover))] cursor-pointer transition-colors group"
+      aria-current={active ? "page" : undefined}
+      className={`relative flex items-center gap-2 px-3 py-1.5 rounded-md text-sm cursor-pointer transition-colors group ${
+        active
+          ? "bg-[hsl(var(--sb-accent))]/12 text-white"
+          : "text-[hsl(var(--sb-text-muted))] hover:text-white hover:bg-[hsl(var(--sb-bg-hover))]"
+      }`}
     >
-      <span className="text-[hsl(var(--sb-text-faint))] group-hover:text-white transition-colors">
+      {active && (
+        <span className="absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-[hsl(var(--sb-accent))]" />
+      )}
+      <span
+        className={`transition-colors ${active ? "text-[hsl(var(--sb-accent))]" : "text-[hsl(var(--sb-text-faint))] group-hover:text-white"}`}
+      >
         {icon}
       </span>
       <span className="flex-1">{label}</span>
+      {hint && (
+        <span className="text-[10px] text-[hsl(var(--sb-text-faint))] opacity-0 transition-opacity group-hover:opacity-100">
+          {hint}
+        </span>
+      )}
       {expandable && (
         <ChevronDown
           size={12}

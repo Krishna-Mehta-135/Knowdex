@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { FileText, Loader2, Send, Sparkles, Square } from "lucide-react";
 import { useWorkspace } from "@/lib/workspaces/WorkspaceProvider";
 import { askWorkspace, type AskSource } from "@/lib/kx/api";
+import { parseAnswer, type Inline } from "@/lib/ask/answerBlocks";
 
 interface Turn {
   id: number;
@@ -17,25 +18,80 @@ interface Turn {
   error?: string;
 }
 
-/** Render `[1]` citations as chips linking to the source note. */
-function Answer({ text, sources }: { text: string; sources: AskSource[] }) {
-  const parts = text.split(/(\[\d+\])/g);
+function Inlines({
+  inline,
+  sources,
+}: {
+  inline: Inline[];
+  sources: AskSource[];
+}) {
   return (
-    <div className="whitespace-pre-wrap text-sm leading-relaxed">
-      {parts.map((p, i) => {
-        const m = /^\[(\d+)\]$/.exec(p);
-        const src = m ? sources.find((s) => s.n === Number(m[1])) : undefined;
-        if (!src)
-          return <span key={i}>{p.replace(/\*\*(.+?)\*\*/g, "$1")}</span>;
+    <>
+      {inline.map((x, i) => {
+        if (x.t === "bold")
+          return (
+            <strong key={i} className="font-semibold text-white">
+              {x.v}
+            </strong>
+          );
+        if (x.t === "code")
+          return (
+            <code
+              key={i}
+              className="rounded bg-white/10 px-1 py-0.5 text-[12px]"
+            >
+              {x.v}
+            </code>
+          );
+        if (x.t === "cite") {
+          const src = sources.find((s) => s.n === x.n);
+          if (!src) return <span key={i}>[{x.n}]</span>;
+          return (
+            <Link
+              key={i}
+              href={`/documents/${src.sourceId}`}
+              title={src.title}
+              className="mx-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded bg-[hsl(var(--sb-accent))]/25 px-1 align-baseline text-[10px] font-semibold text-[hsl(var(--sb-accent))] no-underline hover:bg-[hsl(var(--sb-accent))]/40"
+            >
+              {src.n}
+            </Link>
+          );
+        }
+        return <span key={i}>{x.v}</span>;
+      })}
+    </>
+  );
+}
+
+/** Answer body: light Markdown with clickable citation chips. */
+function Answer({ text, sources }: { text: string; sources: AskSource[] }) {
+  return (
+    <div className="space-y-2.5 text-sm leading-relaxed text-[hsl(var(--sb-text))]">
+      {parseAnswer(text).map((b, i) => {
+        if (b.t === "p")
+          return (
+            <p key={i}>
+              <Inlines inline={b.inline} sources={sources} />
+            </p>
+          );
+        if (b.t === "h")
+          return (
+            <p key={i} className="font-semibold text-white">
+              <Inlines inline={b.inline} sources={sources} />
+            </p>
+          );
+        const List = b.t === "ul" ? "ul" : "ol";
         return (
-          <Link
+          <List
             key={i}
-            href={`/documents/${src.sourceId}`}
-            title={src.title}
-            className="mx-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded bg-[hsl(var(--sb-accent))]/25 px-1 align-baseline text-[10px] font-semibold text-[hsl(var(--sb-accent))] no-underline hover:bg-[hsl(var(--sb-accent))]/40"
+            className={`space-y-1 pl-5 ${b.t === "ul" ? "list-disc" : "list-decimal"} marker:text-[hsl(var(--sb-accent))]`}
           >
-            {src.n}
-          </Link>
+            {b.items.map((it, j) => (
+              <li key={j}>
+                <Inlines inline={it} sources={sources} />
+              </li>
+            ))}
+          </List>
         );
       })}
     </div>

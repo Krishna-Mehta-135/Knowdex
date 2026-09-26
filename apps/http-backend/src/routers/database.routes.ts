@@ -6,6 +6,7 @@ import {
   createRow,
   deleteDatabase,
   getDatabase,
+  getRow,
   listDatabases,
   updateDatabase,
   updateRow,
@@ -22,6 +23,7 @@ databaseRouter.get("/databases/:databaseId", getDatabase);
 databaseRouter.patch("/databases/:databaseId", updateDatabase);
 databaseRouter.delete("/databases/:databaseId", deleteDatabase);
 databaseRouter.post("/databases/:databaseId/rows", createRow);
+databaseRouter.get("/databases/:databaseId/rows/:rowId", getRow);
 databaseRouter.patch("/databases/:databaseId/rows/:rowId", updateRow);
 
 export { databaseRouter };

@@ -42,3 +42,6 @@ export const updateRow = (
   rowId: string,
   body: { title?: string; props?: Record<string, PropValue> },
 ) => kx<Row>(`databases/${id}/rows/${rowId}`, json("PATCH", body));
+
+export const getRow = (id: string, rowId: string) =>
+  kx<{ database: DatabaseMeta; row: Row }>(`databases/${id}/rows/${rowId}`);

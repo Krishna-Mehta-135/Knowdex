@@ -67,6 +67,59 @@ function CommitInput({
   );
 }
 
+const dateFmt = new Intl.DateTimeFormat(undefined, {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+  timeZone: "UTC",
+});
+
+/** Shows a formatted date (or a quiet dash); the native picker only appears on click. */
+function DateCell({
+  value,
+  onCommit,
+  label,
+}: {
+  value: string;
+  onCommit: (v: string) => void;
+  label: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        type="date"
+        aria-label={label}
+        defaultValue={value}
+        onBlur={(e) => {
+          setEditing(false);
+          if (e.target.value !== value) onCommit(e.target.value);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+          if (e.key === "Escape") setEditing(false);
+        }}
+        className={inputCls}
+      />
+    );
+  }
+  return (
+    <button
+      type="button"
+      aria-label={value ? `${label}: ${value}` : `Set ${label}`}
+      onClick={() => setEditing(true)}
+      className="block w-full px-2 py-1.5 text-left text-sm hover:bg-white/5"
+    >
+      {value ? (
+        dateFmt.format(new Date(`${value}T00:00:00Z`))
+      ) : (
+        <span className="text-xs text-[hsl(var(--sb-text-faint))]">—</span>
+      )}
+    </button>
+  );
+}
+
 export function Cell({ prop, value, onChange }: CellProps) {
   const label = prop.name;
   switch (prop.type) {
@@ -82,8 +135,7 @@ export function Cell({ prop, value, onChange }: CellProps) {
       );
     case "date":
       return (
-        <CommitInput
-          type="date"
+        <DateCell
           label={label}
           value={typeof value === "string" ? value : ""}
           onCommit={(v) => onChange(v === "" ? null : v)}

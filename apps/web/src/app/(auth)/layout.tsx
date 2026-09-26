@@ -41,37 +41,31 @@ export default function AuthLayout({
           <AppMockup />
         </div>
 
-        {/* Social proof + testimonial */}
+        {/* What it does (real capabilities, no invented numbers) */}
         <div className="relative z-10">
-          <div className="flex items-center gap-6 mb-5">
+          <p className="text-base font-medium leading-snug text-white">
+            Notes that connect themselves.
+          </p>
+          <p className="mt-1.5 max-w-md text-sm leading-relaxed text-zinc-500">
+            Write together in real time, see how ideas relate in a live graph,
+            and ask questions that are answered from your own notes.
+          </p>
+          <ul className="mt-5 flex flex-wrap gap-2">
             {[
-              ["12K+", "researchers"],
-              ["50M+", "notes linked"],
-              ["4.9★", "App Store"],
-            ].map(([n, l]) => (
-              <div key={l}>
-                <div className="text-lg font-bold text-white">{n}</div>
-                <div className="text-zinc-600 text-xs">{l}</div>
-              </div>
+              "Live knowledge graph",
+              "Ask with citations",
+              "Databases & boards",
+              "Works offline",
+              "Import Notion & Obsidian",
+            ].map((f) => (
+              <li
+                key={f}
+                className="rounded-full border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-xs text-zinc-400"
+              >
+                {f}
+              </li>
             ))}
-          </div>
-          <div className="flex gap-3">
-            <div className="w-0.5 rounded-full bg-indigo-500/40 flex-shrink-0 mt-1" />
-            <div>
-              <blockquote className="text-sm text-white/80 italic leading-relaxed mb-2">
-                &quot;It feels less like software and more like an extension of
-                my own mind.&quot;
-              </blockquote>
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-indigo-600 to-violet-600 flex items-center justify-center text-[9px] font-bold text-white">
-                  RC
-                </div>
-                <span className="text-xs text-zinc-500">
-                  Dr. Robert Chen · Lead Researcher
-                </span>
-              </div>
-            </div>
-          </div>
+          </ul>
         </div>
       </div>
 

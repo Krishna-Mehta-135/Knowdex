@@ -1,6 +1,7 @@
 import express, { Router } from "express";
 import { importNotes } from "../controllers/import.controller.js";
 import { assistNote, organizeNote } from "../controllers/assist.controller.js";
+import { getHome } from "../controllers/home.controller.js";
 import { rateLimit } from "../middlewares/rateLimit.js";
 import { protect } from "../middlewares/auth.middleware.js";
 import {
@@ -35,6 +36,7 @@ const limits = {
 
 semanticRouter.get("/workspaces/:workspaceId/graph", getWorkspaceGraph);
 semanticRouter.get("/workspaces/:workspaceId/index-status", getIndexStatus);
+semanticRouter.get("/workspaces/:workspaceId/home", getHome);
 semanticRouter.post(
   "/workspaces/:workspaceId/search",
   limits.search,

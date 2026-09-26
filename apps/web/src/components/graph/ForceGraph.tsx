@@ -21,6 +21,8 @@ interface Props {
   query?: string;
   /** Emphasise a suggested pair (from the suggestions panel). */
   focusPair?: { a: string; b: string } | null;
+  /** Optional per-node fill colours (clusters / tags). */
+  nodeColors?: Map<string, string>;
   onOpen?: (node: GraphNode) => void;
   className?: string;
 }
@@ -52,6 +54,7 @@ export function ForceGraph({
   until = null,
   query = "",
   focusPair = null,
+  nodeColors,
   onOpen,
   className,
 }: Props) {
@@ -83,6 +86,7 @@ export function ForceGraph({
     activeId,
     query,
     focusPair,
+    nodeColors,
     adjacency: new Map<string, Set<string>>(),
   });
   const [tip, setTip] = useState<{ x: number; y: number; text: string } | null>(
@@ -115,7 +119,7 @@ export function ForceGraph({
     return m;
   }, [data]);
 
-  latest.current = { activeId, query, focusPair, adjacency };
+  latest.current = { activeId, query, focusPair, nodeColors, adjacency };
 
   /** Mini mode shows only the active note's neighbourhood. */
   const scope = useMemo(() => {
@@ -201,7 +205,7 @@ export function ForceGraph({
 
   useEffect(() => {
     requestDraw();
-  }, [activeId, query, focusPair, requestDraw]);
+  }, [activeId, query, focusPair, nodeColors, requestDraw]);
 
   useEffect(
     () => () => {
@@ -257,7 +261,8 @@ export function ForceGraph({
     ctx.clearRect(0, 0, w, h);
     ctx.setTransform(dpr * v.k, 0, 0, dpr * v.k, dpr * v.x, dpr * v.y);
 
-    const { activeId, query, focusPair, adjacency } = latest.current;
+    const { activeId, query, focusPair, nodeColors, adjacency } =
+      latest.current;
     const hv = hover.current;
     const focusId = hv.node ?? activeId ?? null;
     const neighbours = focusId ? adjacency.get(focusId) : undefined;
@@ -316,11 +321,11 @@ export function ForceGraph({
             ? ACCENT
             : matched
               ? "#fff"
-              : near || isHover
-                ? "#fff"
-                : "rgba(255,255,255,0.6)";
+              : (nodeColors?.get(n.id) ??
+                (near || isHover ? "#fff" : "rgba(255,255,255,0.6)"));
       if (isActive || isHover || pair) {
-        ctx.shadowColor = isActive || pair ? ACCENT : "#fff";
+        ctx.shadowColor =
+          isActive || pair ? ACCENT : (nodeColors?.get(n.id) ?? "#fff");
         ctx.shadowBlur = 14;
       }
       ctx.fillStyle = color;
