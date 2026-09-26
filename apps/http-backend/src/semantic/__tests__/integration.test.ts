@@ -179,6 +179,7 @@ d("semantic API (real db)", () => {
       where: { id: { in: Object.values(ids) } },
     });
     await prisma.content.deleteMany({ where: { workspaceId: wid } });
+    await prisma.noteDatabase.deleteMany({ where: { workspaceId: wid } });
     await prisma.workspace.deleteMany({ where: { id: wid } });
     await prisma.user.deleteMany({
       where: { username: { in: [`t1${suffix}`, `t2${suffix}`] } },
@@ -468,6 +469,105 @@ d("semantic API (real db)", () => {
     await prisma.docVersion.deleteMany({
       where: { docId: { in: Object.values(ids) } },
     });
+  });
+
+  it("databases: create from template, rows, validation, permissions, detach on delete", async () => {
+    const mk = await json(`/workspaces/${wid}/databases`, {
+      name: "Sprint",
+      template: "tasks",
+    });
+    expect(mk.status).toBe(201);
+    const db = (await mk.json()).data;
+    expect(db.schema.map((p: { id: string }) => p.id)).toEqual([
+      "status",
+      "due",
+      "priority",
+      "tags",
+    ]);
+    expect(db.views.map((v: { type: string }) => v.type)).toEqual([
+      "table",
+      "board",
+    ]);
+
+    const r1 = await json(`/databases/${db.id}/rows`, {
+      title: "Write docs",
+      props: { status: "todo", due: "2026-10-01" },
+    });
+    expect(r1.status).toBe(201);
+    const row = (await r1.json()).data;
+    expect(row.props).toEqual({ status: "todo", due: "2026-10-01" });
+    importedIds.push(row.id);
+
+    // validation
+    expect(
+      (await json(`/databases/${db.id}/rows`, { props: { status: "nope" } }))
+        .status,
+    ).toBe(400);
+    expect(
+      (await json(`/databases/${db.id}/rows`, { props: { ghost: 1 } })).status,
+    ).toBe(400);
+
+    // patch merges, null clears
+    const patch = (body: unknown, tk = token) =>
+      api(
+        `/databases/${db.id}/rows/${row.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        },
+        tk,
+      );
+    const p1 = (
+      await (await patch({ props: { status: "doing", due: null } })).json()
+    ).data;
+    expect(p1.props).toEqual({ status: "doing" });
+    expect(
+      (await (await patch({ title: "Write the docs" })).json()).data.title,
+    ).toBe("Write the docs");
+    expect((await patch({ props: { due: "31/12/2026" } })).status).toBe(400);
+    expect(
+      (await patch({ props: { status: "done" } }, otherToken)).status,
+    ).toBe(403);
+
+    // rows appear in get + counts in list
+    const got = (await (await api(`/databases/${db.id}`)).json()).data;
+    expect(got.rows).toHaveLength(1);
+    const list = (await (await api(`/workspaces/${wid}/databases`)).json())
+      .data;
+    expect(list.find((d: { id: string }) => d.id === db.id).rowCount).toBe(1);
+
+    // schema updates are validated
+    const upd = (body: unknown) =>
+      api(`/databases/${db.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    expect(
+      (await upd({ views: [{ id: "b", name: "Board", type: "board" }] }))
+        .status,
+    ).toBe(400); // no groupBy
+    expect(
+      (
+        await upd({
+          views: [{ id: "b", name: "Board", type: "board", groupBy: "ghost" }],
+        })
+      ).status,
+    ).toBe(400);
+    expect((await upd({ name: "Renamed" })).status).toBe(200);
+
+    // delete keeps the note
+    expect(
+      (await api(`/databases/${db.id}`, { method: "DELETE" })).status,
+    ).toBe(200);
+    const kept = await prisma.content.findUnique({ where: { id: row.id } });
+    expect(kept.databaseId).toBeNull();
+    expect((await api(`/databases/${db.id}`)).status).toBe(404);
+    expect(
+      (await json(`/workspaces/${wid}/databases`, { name: "x" }, otherToken))
+        .status,
+    ).toBe(403);
   });
 
   it("clipper blocks private/loopback URLs (SSRF)", async () => {

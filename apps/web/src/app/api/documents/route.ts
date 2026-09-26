@@ -14,6 +14,7 @@ interface BackendContent {
   updatedAt?: string;
   folderPath?: string;
   workspaceId?: string | null;
+  databaseId?: string | null;
   tags?: BackendTag[];
 }
 
@@ -31,6 +32,7 @@ function mapDocument(d: BackendContent) {
     ownerId: d.userId,
     folderPath: d.folderPath ?? "",
     workspaceId: d.workspaceId ?? null,
+    databaseId: d.databaseId ?? null,
     tags: Array.isArray(d.tags) ? d.tags.map((tg) => tg.name) : [],
     createdAt: new Date(d.createdAt ?? Date.now()).getTime(),
     updatedAt: new Date(d.updatedAt ?? Date.now()).getTime(),

@@ -310,7 +310,16 @@ const FolderTreeBranch = React.memo(function FolderTreeBranch({
   const label = segments[segments.length - 1] ?? "";
   const pathKey = segments.join("/");
   const [open, setOpen] = useState(segments.length <= 2);
-  const { documents, deleteDocument, updateDocument } = useDocuments();
+  const {
+    documents: allDocuments,
+    deleteDocument,
+    updateDocument,
+  } = useDocuments();
+  // Database rows are managed from their database, not the note tree.
+  const documents = useMemo(
+    () => allDocuments.filter((d: Document) => !d.databaseId),
+    [allDocuments],
+  );
   const nestTarget = nestHoverPath === pathKey;
   const isThisFolderDragging = activeDragFolderPath === pathKey;
   const [isEditing, setIsEditing] = useState(false);

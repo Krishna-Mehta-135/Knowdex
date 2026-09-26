@@ -35,6 +35,7 @@ import {
   UserPlus,
   Sparkles,
   Upload,
+  Table2,
 } from "lucide-react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth/useAuth";
@@ -657,6 +658,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               label="Graph View"
               onClick={() => {
                 router.push("/graph");
+                if (window.innerWidth < 768) setSidebarOpen(false);
+              }}
+            />
+            <SidebarItem
+              icon={<Table2 size={14} />}
+              label="Databases"
+              onClick={() => {
+                router.push("/databases");
                 if (window.innerWidth < 768) setSidebarOpen(false);
               }}
             />

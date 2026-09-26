@@ -41,8 +41,13 @@ model Content {
   workspace   Workspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
   folderPath  String     @default("")
   isPublic    Boolean    @default(false)
+  /// Set when this note is a row of a NoteDatabase; `props` holds its property values.
+  databaseId  String?
+  props       Json       @default("{}")
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
+
+  @@index([databaseId])
 }
 
 model Workspace {
@@ -179,4 +184,24 @@ model DocVersion {
   createdAt DateTime @default(now())
 
   @@index([docId, createdAt])
+}
+
+/**
+ * A Notion-style database: rows are ordinary notes (Content.databaseId) whose
+ * property values live in Content.props, keyed by property id.
+ */
+model NoteDatabase {
+  id          String   @id @default(uuid())
+  workspaceId String
+  name        String
+  icon        String   @default("")
+  /// [{ id, name, type, options?: [{ id, name, color }] }]
+  schema      Json     @default("[]")
+  /// [{ id, name, type: "table" | "board", groupBy?, sort?, hidden? }]
+  views       Json     @default("[]")
+  createdBy   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([workspaceId])
 }

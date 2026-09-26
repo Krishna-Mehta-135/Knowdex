@@ -10,6 +10,7 @@ import {
   Plus,
   Search,
   Sparkles,
+  Table2,
   Upload,
 } from "lucide-react";
 import { useDocuments } from "@/lib/documents/useDocuments";
@@ -107,6 +108,13 @@ export function CommandPalette({ open, onClose, onCreateNew }: Props) {
         label: "Ask your notes…",
         icon: <MessageSquareText size={15} />,
         run: () => go("/ask"),
+      },
+      {
+        key: "databases",
+        section: "Actions",
+        label: "Open databases",
+        icon: <Table2 size={15} />,
+        run: () => go("/databases"),
       },
       {
         key: "import",

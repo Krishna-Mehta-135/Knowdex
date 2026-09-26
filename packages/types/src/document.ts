@@ -7,6 +7,8 @@ export interface Document {
   /** Folder segments under workspace, e.g. "Research / Notes" */
   folderPath?: string;
   workspaceId?: string | null;
+  /** Set when the note is a row of a database. */
+  databaseId?: string | null;
   tags?: string[];
 }
 
