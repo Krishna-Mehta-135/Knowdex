@@ -40,6 +40,7 @@
     "multer": "^2",
     "nanoid": "^5.1.5",
     "prisma": "^7.8.0",
+    "sanitize-html": "2",
     "typescript": "^5.8.3",
     "unpdf": "^1.8.1",
     "yjs": "13.6.30",
@@ -52,6 +53,7 @@
   "devDependencies": {
     "@types/markdown-it": "^14.2.0",
     "@types/multer": "^2.2.0",
+    "@types/sanitize-html": "^2.16.1",
     "vitest": "^5.0.2"
   }
 }

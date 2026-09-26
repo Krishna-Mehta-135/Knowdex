@@ -624,6 +624,66 @@ d("semantic API (real db)", () => {
     expect(await res.text()).toContain("event: error"); // GEMINI_API_KEY is blanked in tests
   });
 
+  it("publish: private notes are invisible, public notes render sanitised HTML, attachments are scoped", async () => {
+    const pub = (path: string) => fetch(`${base}/api/v1/public${path}`); // no auth header
+    expect((await pub(`/notes/${ids.cake}`)).status).toBe(404); // private looks like missing
+    expect((await pub(`/notes/not-a-uuid`)).status).toBe(404);
+
+    // give the cake note a PDF attachment, a wiki link to a public + a private note, then publish two notes
+    const up = await api(`/attachments?docId=${ids.cake}&name=recipe.pdf`, {
+      method: "POST",
+      headers: { "Content-Type": "application/pdf" },
+      body: new Uint8Array(tinyPdf("Public recipe card")),
+    });
+    const att = (await up.json()).data;
+    const s = state(
+      ["Public body <script>alert(1)</script> text"],
+      "Cake Frosting",
+    );
+    await prisma.document.update({
+      where: { id: ids.cake },
+      data: { state: s },
+    });
+    await prisma.content.update({
+      where: { id: ids.cake },
+      data: { isPublic: true },
+    });
+    await prisma.content.update({
+      where: { id: ids.cake2 },
+      data: { isPublic: true },
+    });
+
+    const res = await pub(`/notes/${ids.cake}`);
+    expect(res.status).toBe(200);
+    const note = (await res.json()).data;
+    expect(note.title).toBe("Chocolate Cake");
+    expect(note.html).toContain("Public body");
+    expect(note.html).not.toContain("<script");
+    expect(note.html).toContain(`href="/p/${ids.cake2}"`); // linked note is public too
+    expect(note.description).toContain("Public body");
+
+    // unpublish the linked note -> the link degrades to plain text
+    await prisma.content.update({
+      where: { id: ids.cake2 },
+      data: { isPublic: false },
+    });
+    const again = (await (await pub(`/notes/${ids.cake}`)).json()).data;
+    expect(again.html).not.toContain(`/p/${ids.cake2}`);
+
+    // attachments: served only for the owning public note
+    expect((await pub(`/attachments/${ids.cake}/${att.id}`)).status).toBe(200);
+    expect((await pub(`/attachments/${ids.linking}/${att.id}`)).status).toBe(
+      404,
+    ); // wrong note
+    await prisma.content.update({
+      where: { id: ids.cake },
+      data: { isPublic: false },
+    });
+    expect((await pub(`/attachments/${ids.cake}/${att.id}`)).status).toBe(404); // unpublished
+    expect((await pub(`/notes/${ids.cake}`)).status).toBe(404);
+    await api(`/attachments/${att.id}`, { method: "DELETE" });
+  });
+
   it("clipper blocks private/loopback URLs (SSRF)", async () => {
     for (const url of [
       "http://127.0.0.1:8000/",

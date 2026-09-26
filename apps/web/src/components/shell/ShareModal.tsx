@@ -54,9 +54,9 @@ export function ShareModal({
   const [docIsPublic, setDocIsPublic] = useState(initialDocIsPublic);
   const [isUpdatingPrivacy, setIsUpdatingPrivacy] = useState(false);
   const [isUpdatingDocPrivacy, setIsUpdatingDocPrivacy] = useState(false);
-  const [copiedType, setCopiedType] = useState<"workspace" | "document" | null>(
-    null,
-  );
+  const [copiedType, setCopiedType] = useState<
+    "workspace" | "document" | "public" | null
+  >(null);
   const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
   const [isLoadingRequests, setIsLoadingRequests] = useState(false);
   const [processingRequestId, setProcessingRequestId] = useState<string | null>(
@@ -134,12 +134,14 @@ export function ShareModal({
     }
   };
 
-  const copyToClipboard = (type: "workspace" | "document") => {
+  const copyToClipboard = (type: "workspace" | "document" | "public") => {
     let url = "";
     if (type === "workspace") {
       url = `${window.location.origin}/?ws=${workspaceSlug}`;
     } else if (type === "document" && docId) {
       url = `${window.location.origin}/documents/${docId}`;
+    } else if (type === "public" && docId) {
+      url = `${window.location.origin}/p/${docId}`;
     }
 
     if (url) {
@@ -312,6 +314,32 @@ export function ShareModal({
               </button>
             </div>
           </div>
+
+          {docId && docIsPublic && (
+            <div className="flex items-center gap-3 rounded-2xl border border-green-500/20 bg-green-500/5 px-4 py-3">
+              <Globe size={18} className="shrink-0 text-green-400" />
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold text-white/80">
+                  Published page — anyone can read it, no login
+                </p>
+                <a
+                  href={`/p/${docId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block truncate text-[11px] text-green-300/80 hover:underline"
+                >
+                  {typeof window !== "undefined" ? window.location.origin : ""}
+                  /p/{docId}
+                </a>
+              </div>
+              <button
+                onClick={() => copyToClipboard("public")}
+                className="rounded-lg border border-white/10 px-3 py-1.5 text-xs hover:bg-white/10"
+              >
+                {copiedType === "public" ? "Copied" : "Copy link"}
+              </button>
+            </div>
+          )}
 
           {/* Join Requests (Owner Only) */}
           {isOwner && (

@@ -8,6 +8,7 @@ import { documentRouter } from "./routers/document.routes.js";
 import { workspaceRouter } from "./routers/workspace.routes.js";
 import { semanticRouter } from "./routers/semantic.routes.js";
 import { databaseRouter } from "./routers/database.routes.js";
+import { publicRouter } from "./routers/public.routes.js";
 
 const app: Express = express();
 
@@ -64,6 +65,7 @@ app.use("/api/v1/documents", documentRouter);
 app.use("/api/v1/workspaces", workspaceRouter);
 app.use("/api/v1/kx", semanticRouter);
 app.use("/api/v1/kx", databaseRouter);
+app.use("/api/v1/public", publicRouter);
 
 // Global Error Handler
 app.use(
