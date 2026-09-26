@@ -33,6 +33,7 @@ import { EditorSkeleton } from "./EditorSkeleton";
 import { CollaboratorBar } from "./CollaboratorBar";
 import { WordCount } from "./WordCount";
 import { EditorToolbar } from "./EditorToolbar";
+import { SyncBanner } from "@/components/status/SyncBanner";
 import dynamic from "next/dynamic";
 
 // History pulls in a second editor + Yjs conversion; load it only when opened.
@@ -439,6 +440,8 @@ function EditorContentWrapper({
         onOpenHistory={() => setHistoryOpen(true)}
         onOpenAssist={() => setAssistOpen((o) => !o)}
       />
+
+      <SyncBanner />
 
       {/* Editor + AI panel */}
       <div className="flex flex-1 overflow-hidden relative">

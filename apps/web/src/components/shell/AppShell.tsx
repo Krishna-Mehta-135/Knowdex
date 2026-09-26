@@ -62,6 +62,7 @@ import {
 } from "@repo/ui";
 import { ShareModal } from "./ShareModal";
 import { CommandPalette } from "./CommandPalette";
+import { useOnlineStatus } from "@/lib/sync/useOnlineStatus";
 
 function normalizedDocTitle(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
@@ -142,6 +143,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { starredIds, toggleStar, isStarred } = useStarredDocs();
   const { recentIds } = useRecentDocs();
   const { documents, createDocument } = useDocuments();
+  const online = useOnlineStatus();
 
   useEffect(() => {
     if (!currentDocId || currentDocId === "new") {
@@ -813,8 +815,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             <div className="hidden xs:flex items-center gap-1 sm:gap-1.5 text-[10px] sm:text-xs text-[hsl(var(--sb-text-faint))] mr-0.5 sm:mr-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
-              Online
+              <span
+                className={`w-1.5 h-1.5 rounded-full inline-block ${online ? "bg-green-500" : "bg-amber-400"}`}
+              />
+              {online ? "Online" : "Offline"}
             </div>
 
             {!isMember && displayWorkspace && (

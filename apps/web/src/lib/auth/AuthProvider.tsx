@@ -2,6 +2,7 @@
 import React, { createContext, useEffect, useState } from "react";
 
 import type { AuthState, Session } from "./types";
+import { clearOfflineUserData } from "@/components/pwa/RegisterSW";
 
 export const AuthContext = createContext<AuthState>({ status: "loading" });
 
@@ -43,6 +44,11 @@ export function AuthProvider({
       })
       .catch(() => setState({ status: "unauthenticated" }));
   }, [initialState]);
+
+  // Signed out: forget cached notes/lists so they can't be read offline by the next user.
+  useEffect(() => {
+    if (state.status === "unauthenticated") clearOfflineUserData();
+  }, [state.status]);
 
   return <AuthContext.Provider value={state}>{children}</AuthContext.Provider>;
 }

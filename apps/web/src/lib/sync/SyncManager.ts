@@ -75,6 +75,8 @@ export class SyncManager {
     // 3. Network events
     if (typeof window !== "undefined") {
       window.addEventListener("online", this.onOnline);
+      window.addEventListener("offline", this.onOffline);
+      document.addEventListener("visibilitychange", this.onVisible);
     }
 
     // 4. Connect
@@ -232,17 +234,19 @@ export class SyncManager {
   }
 
   private scheduleReconnect(): void {
-    if (this.reconnectAttempts >= this.MAX_RECONNECT) {
-      console.error("[SyncManager] Max reconnect attempts reached");
-      this.setStatus("error");
-      return;
-    }
+    if (this.destroyed) return;
+    // Offline: wait for the browser's "online" event instead of burning retries.
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+    // Never give up permanently (a laptop can sleep for hours): after the
+    // exponential ramp-up we keep retrying at the maximum interval.
     const delay = Math.min(
-      this.BACKOFF_BASE * Math.pow(2, this.reconnectAttempts),
+      this.BACKOFF_BASE *
+        Math.pow(2, Math.min(this.reconnectAttempts, this.MAX_RECONNECT)),
       this.BACKOFF_MAX,
     );
     this.reconnectAttempts++;
-    this.reconnectTimer = setTimeout(() => this.connect(), delay);
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = setTimeout(() => void this.connect(), delay);
   }
 
   // Public API
@@ -302,14 +306,52 @@ export class SyncManager {
   };
 
   private onOnline = () => {
-    if (!this.destroyed) this.connect();
+    if (this.destroyed) return;
+    // Back on the network: retry immediately instead of waiting out the backoff.
+    this.reconnectAttempts = 0;
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    if (this.ws?.readyState !== WebSocket.OPEN) void this.connect();
   };
+
+  /** Stop hammering a dead network; edits keep landing in IndexedDB. */
+  private onOffline = () => {
+    if (this.destroyed) return;
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.ws?.close();
+    this.setStatus("error");
+  };
+
+  /** Returning to a tab that lost its connection while hidden. */
+  private onVisible = () => {
+    if (this.destroyed || document.visibilityState !== "visible") return;
+    if (this.ws?.readyState !== WebSocket.OPEN && navigator.onLine !== false) {
+      this.reconnectAttempts = 0;
+      if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+      void this.connect();
+    }
+  };
+
+  /** Manual "Retry now". */
+  retryNow(): void {
+    if (this.destroyed) return;
+    this.reconnectAttempts = 0;
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.ws?.close();
+    void this.connect();
+  }
+
+  /** Local edits not yet acknowledged by the server (for the offline banner). */
+  getPendingCount(): Promise<number> {
+    return db.countPendingUpdates(this.docId);
+  }
 
   destroy(): void {
     this.lifecycle++;
     this.destroyed = true;
     if (typeof window !== "undefined") {
       window.removeEventListener("online", this.onOnline);
+      window.removeEventListener("offline", this.onOffline);
+      document.removeEventListener("visibilitychange", this.onVisible);
     }
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     if (this.snapshotTimer) clearTimeout(this.snapshotTimer);

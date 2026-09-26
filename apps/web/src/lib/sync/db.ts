@@ -101,6 +101,16 @@ export const db = {
     }
   },
 
+  async countPendingUpdates(docId: string): Promise<number> {
+    try {
+      return await (
+        await getDB()
+      ).countFromIndex("pendingUpdates", "by-docId", docId);
+    } catch {
+      return 0;
+    }
+  },
+
   async getPendingUpdates(docId: string) {
     try {
       return await (

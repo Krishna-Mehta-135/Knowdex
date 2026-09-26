@@ -6,6 +6,7 @@ import { API_BASE_URL } from "@/lib/api/config";
 
 import { TooltipProvider, Toaster } from "@repo/ui";
 import { AuthProvider } from "@/lib/auth/AuthProvider";
+import { RegisterSW } from "@/components/pwa/RegisterSW";
 import type { AuthState, Session } from "@/lib/auth/types";
 
 const inter = Inter({
@@ -81,6 +82,7 @@ export default async function RootLayout({
         <AuthProvider initialState={initialAuthState}>
           <TooltipProvider>
             {children}
+            <RegisterSW />
             <Toaster />
           </TooltipProvider>
         </AuthProvider>

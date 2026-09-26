@@ -34,6 +34,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     string | null
   >(null);
   const [isLoading, setIsLoading] = useState(true);
+  const userId = auth.status === "authenticated" ? auth.session.user.id : null;
 
   const setActiveWorkspaceId = useCallback((id: string | null) => {
     setActiveWorkspaceIdState(id);
@@ -52,22 +53,51 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     try {
       let rows: MembershipRow[] = [];
 
-      const boot = await fetch("/api/workspaces/bootstrap", {
-        method: "POST",
-        credentials: "include",
-      });
-      const bootJson = await boot.json().catch(() => ({}));
+      const cacheKey = userId ? `knowdex:memberships:v1:${userId}` : null;
+      const readCache = (): MembershipRow[] => {
+        try {
+          const raw = cacheKey ? localStorage.getItem(cacheKey) : null;
+          const parsed: unknown = raw ? JSON.parse(raw) : [];
+          return Array.isArray(parsed) ? (parsed as MembershipRow[]) : [];
+        } catch {
+          return [];
+        }
+      };
 
-      if (boot.ok && Array.isArray(bootJson?.data)) {
-        rows = bootJson.data as MembershipRow[];
-      } else if (!boot.ok && boot.status !== 401) {
-        const fallback = await fetch("/api/workspaces", {
+      let reachedServer = true;
+      try {
+        const boot = await fetch("/api/workspaces/bootstrap", {
+          method: "POST",
           credentials: "include",
         });
-        const fbJson = await fallback.json().catch(() => ({}));
-        if (fallback.ok && Array.isArray(fbJson?.data)) {
-          rows = fbJson.data as MembershipRow[];
+        const bootJson = await boot.json().catch(() => ({}));
+
+        if (boot.ok && Array.isArray(bootJson?.data)) {
+          rows = bootJson.data as MembershipRow[];
+        } else if (!boot.ok && boot.status !== 401) {
+          const fallback = await fetch("/api/workspaces", {
+            credentials: "include",
+          });
+          const fbJson = await fallback.json().catch(() => ({}));
+          if (fallback.ok && Array.isArray(fbJson?.data)) {
+            rows = fbJson.data as MembershipRow[];
+          } else if (fallback.status >= 500) {
+            reachedServer = false;
+          }
         }
+      } catch {
+        // Offline or server down: fall back to the last known memberships.
+        reachedServer = false;
+      }
+
+      if (reachedServer && rows.length > 0 && cacheKey) {
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify(rows));
+        } catch {
+          /* storage full / private mode */
+        }
+      } else if (!reachedServer || (rows.length === 0 && !navigator.onLine)) {
+        rows = readCache();
       }
 
       setMemberships(rows);
@@ -100,7 +130,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  }, [auth.status]);
+  }, [auth.status, userId]);
 
   useEffect(() => {
     load();
