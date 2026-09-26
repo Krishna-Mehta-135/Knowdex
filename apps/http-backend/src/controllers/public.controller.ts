@@ -63,10 +63,8 @@ export const getPublicNote = asyncHandler(
       attachmentIds: new Set(atts.map((a) => a.id)),
     });
 
-    res.setHeader(
-      "Cache-Control",
-      "public, max-age=30, stale-while-revalidate=120",
-    );
+    // Revalidate every time so an unpublished note disappears immediately.
+    res.setHeader("Cache-Control", "no-cache");
     return res.status(200).json(
       new ApiResponse(
         200,
