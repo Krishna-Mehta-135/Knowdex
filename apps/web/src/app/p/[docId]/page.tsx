@@ -16,7 +16,8 @@ async function load(docId: string): Promise<PublicNote | null> {
     const res = await fetch(
       `${API_BASE_URL}/api/v1/public/notes/${encodeURIComponent(docId)}`,
       {
-        next: { revalidate: 30 },
+        // No data cache: unpublishing a note must take effect immediately.
+        cache: "no-store",
       },
     );
     if (!res.ok) return null;
