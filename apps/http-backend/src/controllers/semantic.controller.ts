@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { prisma } from "@repo/db";
+import { prisma, type Content } from "@repo/db";
 import { z } from "zod";
 import { asyncHandler } from "../utils/asyncHandler";
 import { ApiResponse } from "../utils/ApiResponse";
@@ -49,7 +49,10 @@ async function requireWorkspace(
 }
 
 /** Resolve a note the caller may access. */
-export async function requireDoc(req: Request, res: Response) {
+export async function requireDoc(
+  req: Request,
+  res: Response,
+): Promise<Content | undefined> {
   const userId = req.user?.id;
   const docId = String(req.params.docId ?? "");
   if (!userId) return void fail(res, 401, "Unauthorized");
