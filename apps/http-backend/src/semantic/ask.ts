@@ -15,9 +15,12 @@ export async function retrieveSources(
   workspaceId: string,
   question: string,
 ): Promise<{ sources: AskSource[]; chunks: ScoredChunk[] }> {
-  const raw = (await searchChunks(workspaceId, question, 10)).filter(
-    (c) => c.score >= c.floor,
-  );
+  const all = await searchChunks(workspaceId, question, 10);
+  const strong = all.filter((c) => c.score >= c.floor);
+  // With a model available, weak matches are still worth showing it: it can say
+  // "the notes don't cover this" instead of the user getting a dead end. Without
+  // one, irrelevant passages would just be noise.
+  const raw = strong.length > 0 || !llmAvailable() ? strong : all.slice(0, 4);
   // Keep at most 2 chunks per source so one long note can't crowd out the rest.
   const perSource = new Map<string, number>();
   const chunks: ScoredChunk[] = [];

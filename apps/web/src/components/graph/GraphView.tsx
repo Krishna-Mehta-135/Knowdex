@@ -2,7 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Pause, Play, Search, Sparkles, Waypoints } from "lucide-react";
+import {
+  CircleHelp,
+  Pause,
+  Play,
+  Search,
+  Sparkles,
+  Waypoints,
+} from "lucide-react";
 import { ForceGraph } from "./ForceGraph";
 import { useGraphData } from "@/lib/graph/useGraphData";
 import type { GraphNode } from "@/lib/kx/api";
@@ -32,6 +39,7 @@ export function GraphView() {
   );
   const [panelOpen, setPanelOpen] = useState(true);
   const [colorBy, setColorBy] = useState<ColorBy>("clusters");
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const [minT, maxT] = useMemo(() => {
     if (data.nodes.length === 0) return [0, 0];
@@ -175,6 +183,60 @@ export function GraphView() {
           <span className="w-24 text-right tabular-nums text-[hsl(var(--sb-text-muted))]">
             {until === null ? "Now" : dateFmt.format(until)}
           </span>
+        </div>
+        <div className="relative">
+          <button
+            onClick={() => setHelpOpen((v) => !v)}
+            aria-expanded={helpOpen}
+            aria-label="How the graph works"
+            className="rounded-lg border border-[hsl(var(--sb-border))] p-1.5 text-[hsl(var(--sb-text-muted))] hover:bg-[hsl(var(--sb-bg-hover))] hover:text-white"
+          >
+            <CircleHelp size={14} />
+          </button>
+          {helpOpen && (
+            <>
+              <div
+                className="fixed inset-0 z-30"
+                onClick={() => setHelpOpen(false)}
+              />
+              <div
+                role="dialog"
+                aria-label="How the graph works"
+                className="absolute left-0 top-full z-40 mt-2 w-80 rounded-xl border border-[hsl(var(--sb-border))] bg-[hsl(var(--sb-bg-panel))] p-4 text-xs leading-relaxed text-[hsl(var(--sb-text-muted))] shadow-2xl"
+              >
+                <p className="mb-2 text-sm font-medium text-white">
+                  How the graph works
+                </p>
+                <ul className="space-y-1.5">
+                  <li>
+                    <b className="text-white">Nodes</b> are your notes (squares
+                    are files). Bigger = more links.
+                  </li>
+                  <li>
+                    <b className="text-white">Solid lines</b> are real{" "}
+                    <code>[[links]]</code> you wrote.
+                  </li>
+                  <li>
+                    <b className="text-fuchsia-300">Dashed lines</b> are ghost
+                    links: notes about similar things that aren’t linked yet.
+                    Open one from Suggested connections and add the link.
+                  </li>
+                  <li>
+                    <b className="text-white">Colours</b> mark topic clusters
+                    found from links and similarity (or switch to tags).
+                  </li>
+                  <li>
+                    <b className="text-white">Play</b> replays how your notes
+                    grew over time.
+                  </li>
+                  <li>
+                    Drag nodes, scroll to zoom, click a node to open the note.
+                    Layout is a physics simulation that settles and then stops.
+                  </li>
+                </ul>
+              </div>
+            </>
+          )}
         </div>
         <span className="ml-auto text-[hsl(var(--sb-text-faint))]">
           {data.nodes.length} nodes · {linkCount} links ·{" "}

@@ -220,6 +220,22 @@ d("semantic API (real db)", () => {
     expect(["Chocolate Cake", "Cake Frosting"]).toContain(r.data[0].title);
   });
 
+  it("search and ask retrieval survive inflection ('baking' finds notes that say 'bake')", async () => {
+    const r = await (
+      await json(`/workspaces/${wid}/search`, { query: "baking" })
+    ).json();
+    expect(r.data.map((x: { title: string }) => x.title)).toEqual(
+      expect.arrayContaining(["Chocolate Cake"]),
+    );
+    const ask = await (
+      await json(`/workspaces/${wid}/ask`, {
+        question: "what do I know about baking",
+      })
+    ).text();
+    expect(ask).toContain("event: sources");
+    expect(ask).toContain("Chocolate Cake");
+  });
+
   it("unlinked mentions finds notes naming a title without linking", async () => {
     // "Chocolate Cake" title is mentioned in "Cake Frosting" body text ("chocolate cake needs")
     const r = await (

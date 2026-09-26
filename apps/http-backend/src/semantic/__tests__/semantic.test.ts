@@ -74,6 +74,19 @@ describe("chunkText", () => {
   });
 });
 
+describe("stem", () => {
+  it("conflates common inflections", async () => {
+    const { stem } = await import("../embedder.js");
+    expect(stem("baking")).toBe(stem("bake"));
+    expect(stem("baked")).toBe(stem("bake"));
+    expect(stem("bakes")).toBe(stem("bake"));
+    expect(stem("making")).toBe(stem("make"));
+    expect(stem("notes")).toBe(stem("note"));
+    expect(stem("bodies")).toBe(stem("body"));
+    expect(stem("class")).toBe("class");
+  });
+});
+
 describe("LocalHashEmbedder", () => {
   const e = new LocalHashEmbedder();
   it("is deterministic and unit-length", async () => {

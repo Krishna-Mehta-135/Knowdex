@@ -61,3 +61,5 @@ export const PATCH = proxy;
 export const PUT = proxy;
 export const DELETE = proxy;
 export const dynamic = "force-dynamic";
+// AI answers stream for several seconds; the platform default (10s) cuts them off.
+export const maxDuration = 60;

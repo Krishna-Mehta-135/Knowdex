@@ -4,13 +4,11 @@ import React, { useState, useEffect, useCallback } from "react";
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
   DialogTitle,
   DialogDescription,
-  Button,
   LoadingSpinner,
 } from "@repo/ui";
-import { Globe, Lock, Link2, Users, Check, XCircle } from "lucide-react";
+import { Globe, Lock, Link2, Users, Check, X } from "lucide-react";
 
 interface JoinRequest {
   id: string;
@@ -172,245 +170,339 @@ export function ShareModal({
     }
   };
 
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const publicUrl = docId ? `${origin}/p/${docId}` : "";
+  const noteLabel = docTitle?.trim() || "this note";
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent
         showCloseButton={false}
-        className="sm:max-w-md bg-[#0a0a0a]/95 border-white/10 text-white shadow-[0_0_80px_-15px_rgba(0,0,0,0.9),0_0_30px_-5px_hsla(var(--sb-accent-glow)/0.4)] rounded-[2.5rem] p-0 overflow-hidden backdrop-blur-2xl border-t-white/20 animate-in zoom-in-95 duration-300"
+        className="sm:max-w-[30rem] gap-0 overflow-hidden rounded-2xl border border-[hsl(var(--sb-border))] bg-[hsl(var(--sb-bg-panel))] p-0 ring-0 outline-none focus:outline-none text-white shadow-[0_24px_70px_-20px_rgba(0,0,0,0.9),0_0_40px_-16px_hsla(var(--sb-accent-glow)/0.35)]"
       >
-        <div className="p-8 space-y-8 relative">
+        <header className="flex items-start gap-3 border-b border-[hsl(var(--sb-border))] px-5 py-4">
+          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[hsl(var(--sb-accent))]/15 text-[hsl(var(--sb-accent))]">
+            <Users size={18} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <DialogTitle className="text-base font-semibold leading-tight">
+              Share
+            </DialogTitle>
+            <DialogDescription className="mt-0.5 truncate text-xs text-[hsl(var(--sb-text-muted))]">
+              {docId ? `“${noteLabel}” and its workspace` : "Workspace access"}
+            </DialogDescription>
+          </div>
           <button
             onClick={onClose}
-            className="absolute top-8 right-8 p-2 rounded-xl bg-white/5 text-white/40 hover:text-white hover:bg-white/10 transition-all active:scale-90 z-10"
+            aria-label="Close"
+            className="rounded-lg p-1.5 text-[hsl(var(--sb-text-faint))] transition-colors hover:bg-[hsl(var(--sb-bg-hover))] hover:text-white"
           >
-            <XCircle size={20} />
+            <X size={18} />
           </button>
+        </header>
 
-          <DialogHeader>
-            <DialogTitle className="text-2xl font-bold flex items-center gap-4">
-              <div className="p-3 rounded-2xl bg-[hsl(var(--sb-accent))]/10 shadow-inner">
-                <Users className="text-[hsl(var(--sb-accent))]" size={24} />
-              </div>
-              Share & Permissions
-            </DialogTitle>
-            <DialogDescription className="text-white/40 text-sm mt-2 leading-relaxed">
-              Manage access for this workspace and the current document. Private
-              docs stay hidden even if the workspace is shared.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <h3 className="text-[10px] font-bold text-white/30 uppercase tracking-[0.2em] ml-1">
-              Privacy Controls
-            </h3>
-
-            {/* Workspace Privacy Toggle */}
-            <div className="bg-white/[0.03] border border-white/10 rounded-[1.5rem] p-5 flex items-center justify-between group hover:bg-white/[0.06] transition-all hover:border-[hsl(var(--sb-accent))]/30">
-              <div className="flex items-center gap-4">
-                <div
-                  className={`p-3.5 rounded-2xl ${isPublic ? "bg-green-500/10 text-green-400" : "bg-blue-500/10 text-blue-400"} shadow-inner group-hover:scale-105 transition-transform`}
-                >
-                  {isPublic ? <Globe size={22} /> : <Lock size={22} />}
-                </div>
-                <div>
-                  <div className="text-sm font-bold flex items-center gap-2">
-                    {isPublic ? "Public Workspace" : "Private Workspace"}
-                  </div>
-                  <div className="text-[11px] text-white/30 mt-0.5">
-                    {isPublic
-                      ? "Anyone can view and join via link."
-                      : "Access requires owner approval."}
-                  </div>
-                </div>
-              </div>
-              {isOwner && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleTogglePrivacy}
-                  disabled={isUpdatingPrivacy}
-                  className="h-9 px-5 rounded-xl text-[11px] font-bold uppercase tracking-wider border-white/20 bg-white/5 hover:bg-white/10 text-white transition-all active:scale-95 shadow-sm"
-                >
-                  {isUpdatingPrivacy ? <LoadingSpinner size="sm" /> : "Change"}
-                </Button>
+        <div className="max-h-[70vh] space-y-3 overflow-y-auto p-4 custom-scrollbar">
+          {docId && (
+            <ShareSection
+              icon={docIsPublic ? <Globe size={16} /> : <Lock size={16} />}
+              tint={docIsPublic ? "green" : "accent"}
+              title="Publish to web"
+              description={
+                docIsPublic
+                  ? "Anyone with the link can read this note — no login needed."
+                  : "Off. Only workspace members can open this note."
+              }
+              checked={docIsPublic}
+              busy={isUpdatingDocPrivacy}
+              onToggle={handleToggleDocPrivacy}
+            >
+              {docIsPublic && (
+                <LinkRow
+                  url={publicUrl}
+                  copied={copiedType === "public"}
+                  onCopy={() => copyToClipboard("public")}
+                  openHref={`/p/${docId}`}
+                />
               )}
-            </div>
+            </ShareSection>
+          )}
 
-            {/* Document Privacy Toggle */}
-            {docId && (
-              <div className="bg-white/[0.03] border border-white/10 rounded-[1.5rem] p-5 flex items-center justify-between group hover:bg-white/[0.06] transition-all hover:border-blue-500/30">
-                <div className="flex items-center gap-4">
-                  <div
-                    className={`p-3.5 rounded-2xl ${docIsPublic ? "bg-green-500/10 text-green-400" : "bg-blue-500/10 text-blue-400"} shadow-inner group-hover:scale-105 transition-transform`}
-                  >
-                    {docIsPublic ? <Globe size={22} /> : <Lock size={22} />}
-                  </div>
-                  <div>
-                    <div className="text-sm font-bold flex items-center gap-2">
-                      {docIsPublic ? "Public Document" : "Private Document"}
-                    </div>
-                    <div className="text-[11px] text-white/30 mt-0.5 truncate max-w-[160px]">
-                      {docIsPublic
-                        ? "Anyone with the link can view."
-                        : "Only members can view this doc."}
-                    </div>
-                  </div>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleToggleDocPrivacy}
-                  disabled={isUpdatingDocPrivacy}
-                  className="h-9 px-5 rounded-xl text-[11px] font-bold uppercase tracking-wider border-white/20 bg-white/5 hover:bg-white/10 text-white transition-all active:scale-95 shadow-sm"
-                >
-                  {isUpdatingDocPrivacy ? (
-                    <LoadingSpinner size="sm" />
-                  ) : (
-                    "Change"
-                  )}
-                </Button>
-              </div>
-            )}
-          </div>
-
-          <div className="space-y-4">
-            <h3 className="text-[10px] font-bold text-white/30 uppercase tracking-[0.2em] ml-1">
-              Sharing Channels
-            </h3>
-            <div className="grid grid-cols-2 gap-5">
-              <button
-                onClick={() => copyToClipboard("workspace")}
-                className="flex flex-col items-center justify-center p-6 rounded-[2rem] border border-white/10 bg-white/[0.02] hover:bg-[hsl(var(--sb-accent))]/10 hover:border-[hsl(var(--sb-accent))]/30 transition-all group relative overflow-hidden"
-              >
-                <div className="w-14 h-14 rounded-2xl bg-[hsl(var(--sb-accent))]/10 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform shadow-lg group-hover:shadow-[hsl(var(--sb-accent))]/20">
-                  {copiedType === "workspace" ? (
-                    <Check size={28} className="text-green-400" />
-                  ) : (
-                    <Users size={28} className="text-[hsl(var(--sb-accent))]" />
-                  )}
-                </div>
-                <span className="text-sm font-bold">Workspace</span>
-                <span className="text-[10px] text-white/20 mt-1 uppercase tracking-tighter">
-                  Copy join link
-                </span>
-              </button>
-
-              <button
-                onClick={() => copyToClipboard("document")}
-                disabled={!docId}
-                className="flex flex-col items-center justify-center p-6 rounded-[2rem] border border-white/10 bg-white/[0.02] hover:bg-blue-500/10 hover:border-blue-500/30 transition-all group disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                <div className="w-14 h-14 rounded-2xl bg-blue-500/10 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform shadow-lg group-hover:shadow-blue-500/20">
-                  {copiedType === "document" ? (
-                    <Check size={28} className="text-green-400" />
-                  ) : (
-                    <Link2 size={28} className="text-blue-400" />
-                  )}
-                </div>
-                <span className="text-sm font-bold">Document</span>
-                <span className="text-[10px] text-white/20 mt-1 uppercase tracking-tighter truncate w-full px-2">
-                  {docTitle || "Current page"}
-                </span>
-              </button>
-            </div>
-          </div>
-
-          {docId && docIsPublic && (
-            <div className="flex items-center gap-3 rounded-2xl border border-green-500/20 bg-green-500/5 px-4 py-3">
-              <Globe size={18} className="shrink-0 text-green-400" />
+          {docId && (
+            <div className="flex items-center gap-3 rounded-xl border border-[hsl(var(--sb-border))] px-3.5 py-3">
+              <Link2
+                size={16}
+                className="shrink-0 text-[hsl(var(--sb-text-faint))]"
+              />
               <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold text-white/80">
-                  Published page — anyone can read it, no login
+                <p className="text-sm font-medium">Link for teammates</p>
+                <p className="truncate text-xs text-[hsl(var(--sb-text-muted))]">
+                  Opens the note in the app for workspace members.
                 </p>
-                <a
-                  href={`/p/${docId}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block truncate text-[11px] text-green-300/80 hover:underline"
-                >
-                  {typeof window !== "undefined" ? window.location.origin : ""}
-                  /p/{docId}
-                </a>
               </div>
-              <button
-                onClick={() => copyToClipboard("public")}
-                className="rounded-lg border border-white/10 px-3 py-1.5 text-xs hover:bg-white/10"
-              >
-                {copiedType === "public" ? "Copied" : "Copy link"}
-              </button>
+              <CopyButton
+                copied={copiedType === "document"}
+                onClick={() => copyToClipboard("document")}
+              />
             </div>
           )}
 
-          {/* Join Requests (Owner Only) */}
-          {isOwner && (
-            <div className="space-y-4 pt-2 border-t border-white/5">
-              <div className="flex items-center justify-between">
-                <h3 className="text-[10px] font-bold text-white/30 uppercase tracking-[0.2em] ml-1">
-                  Pending Requests{" "}
-                  {joinRequests.length > 0 && `(${joinRequests.length})`}
-                </h3>
-              </div>
+          <ShareSection
+            icon={isPublic ? <Globe size={16} /> : <Lock size={16} />}
+            tint={isPublic ? "green" : "accent"}
+            title="Public workspace"
+            description={
+              isPublic
+                ? "Anyone can find this workspace and request to join."
+                : "Private. People join only through an invite you approve."
+            }
+            checked={isPublic}
+            busy={isUpdatingPrivacy}
+            disabled={!isOwner}
+            disabledHint="Only the owner can change this"
+            onToggle={handleTogglePrivacy}
+          >
+            <LinkRow
+              label="Invite link"
+              url={`${origin}/?ws=${workspaceSlug}`}
+              copied={copiedType === "workspace"}
+              onCopy={() => copyToClipboard("workspace")}
+            />
+          </ShareSection>
 
-              <div className="max-h-[220px] overflow-y-auto space-y-3 pr-1 custom-scrollbar">
+          {isOwner && (
+            <section
+              aria-label="Join requests"
+              className="rounded-xl border border-[hsl(var(--sb-border))]"
+            >
+              <h3 className="flex items-center justify-between px-3.5 pt-3 text-[11px] font-semibold uppercase tracking-wider text-[hsl(var(--sb-text-faint))]">
+                Join requests
+                {joinRequests.length > 0 && (
+                  <span className="rounded-full bg-[hsl(var(--sb-accent))]/20 px-2 py-0.5 text-[10px] normal-case tracking-normal text-[hsl(var(--sb-accent))]">
+                    {joinRequests.length}
+                  </span>
+                )}
+              </h3>
+              <div className="p-2">
                 {isLoadingRequests ? (
-                  <div className="flex justify-center py-6">
-                    <LoadingSpinner size="md" className="text-white/20" />
+                  <div className="flex justify-center py-5">
+                    <LoadingSpinner size="sm" className="text-white/30" />
                   </div>
                 ) : joinRequests.length === 0 ? (
-                  <div className="text-center py-10 border-2 border-dashed border-white/5 rounded-[2rem] bg-white/[0.01]">
-                    <Users size={32} className="mx-auto text-white/5 mb-3" />
-                    <p className="text-[11px] text-white/20 font-medium">
-                      No pending join requests
-                    </p>
-                  </div>
+                  <p className="px-2 py-3 text-xs text-[hsl(var(--sb-text-faint))]">
+                    No one is waiting to join.
+                  </p>
                 ) : (
-                  joinRequests.map((request) => (
-                    <div
-                      key={request.id}
-                      className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.03] border border-white/5 hover:bg-white/[0.05] transition-all group/item"
-                    >
-                      <div className="min-w-0">
-                        <div className="text-sm font-bold truncate group-hover/item:text-white transition-colors">
-                          {request.requester.username}
+                  <ul className="space-y-1">
+                    {joinRequests.map((request) => (
+                      <li
+                        key={request.id}
+                        className="flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-[hsl(var(--sb-bg-hover))]"
+                      >
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-tr from-indigo-600 to-violet-600 text-xs font-semibold uppercase">
+                          {request.requester.username.charAt(0)}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium">
+                            {request.requester.username}
+                          </p>
+                          <p className="truncate text-[11px] text-[hsl(var(--sb-text-muted))]">
+                            {request.requester.email}
+                          </p>
                         </div>
-                        <div className="text-[10px] text-white/30 truncate mt-0.5">
-                          {request.requester.email}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
                         <button
                           onClick={() =>
                             handleJoinRequest(request.id, "accept")
                           }
                           disabled={!!processingRequestId}
-                          className="w-10 h-10 rounded-xl bg-green-500/10 text-green-400 hover:bg-green-500/20 transition-all flex items-center justify-center active:scale-90"
-                          title="Accept"
+                          className="flex items-center gap-1 rounded-lg bg-emerald-500/15 px-2.5 py-1.5 text-xs font-medium text-emerald-300 transition-colors hover:bg-emerald-500/25 disabled:opacity-50"
                         >
                           {processingRequestId === request.id ? (
                             <LoadingSpinner size="sm" />
                           ) : (
-                            <Check size={18} />
-                          )}
+                            <Check size={13} />
+                          )}{" "}
+                          Accept
                         </button>
                         <button
                           onClick={() =>
                             handleJoinRequest(request.id, "reject")
                           }
                           disabled={!!processingRequestId}
-                          className="w-10 h-10 rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-all flex items-center justify-center active:scale-90"
-                          title="Reject"
+                          aria-label={`Decline ${request.requester.username}`}
+                          className="rounded-lg p-1.5 text-[hsl(var(--sb-text-faint))] transition-colors hover:bg-red-500/15 hover:text-red-300 disabled:opacity-50"
                         >
-                          <XCircle size={18} />
+                          <X size={16} />
                         </button>
-                      </div>
-                    </div>
-                  ))
+                      </li>
+                    ))}
+                  </ul>
                 )}
               </div>
-            </div>
+            </section>
           )}
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+const TINTS = {
+  green: "bg-emerald-500/15 text-emerald-300",
+  accent: "bg-[hsl(var(--sb-accent))]/15 text-[hsl(var(--sb-accent))]",
+} as const;
+
+/** Accessible on/off switch in the app's accent colour. */
+function Switch({
+  checked,
+  onChange,
+  busy,
+  disabled,
+  label,
+}: {
+  checked: boolean;
+  onChange: () => void;
+  busy?: boolean;
+  disabled?: boolean;
+  label: string;
+}) {
+  return (
+    <button
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      disabled={disabled || busy}
+      onClick={onChange}
+      className={`relative h-6 w-11 shrink-0 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--sb-accent))] disabled:cursor-not-allowed disabled:opacity-50 ${checked ? "bg-[hsl(var(--sb-accent))]" : "bg-white/15"}`}
+    >
+      <span
+        className={`absolute left-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-white shadow transition-transform ${checked ? "translate-x-5" : ""}`}
+      >
+        {busy && (
+          <LoadingSpinner
+            size="sm"
+            className="h-3 w-3 text-[hsl(var(--sb-accent))]"
+          />
+        )}
+      </span>
+    </button>
+  );
+}
+
+function ShareSection({
+  icon,
+  tint,
+  title,
+  description,
+  checked,
+  busy,
+  disabled,
+  disabledHint,
+  onToggle,
+  children,
+}: {
+  icon: React.ReactNode;
+  tint: keyof typeof TINTS;
+  title: string;
+  description: string;
+  checked: boolean;
+  busy?: boolean;
+  disabled?: boolean;
+  disabledHint?: string;
+  onToggle: () => void;
+  children?: React.ReactNode;
+}) {
+  return (
+    <section
+      aria-label={title}
+      className="rounded-xl border border-[hsl(var(--sb-border))] bg-[hsl(var(--sb-bg))]/40"
+    >
+      <div className="flex items-center gap-3 px-3.5 py-3">
+        <span
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${TINTS[tint]}`}
+        >
+          {icon}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium">{title}</p>
+          <p className="text-xs leading-snug text-[hsl(var(--sb-text-muted))]">
+            {disabled && disabledHint ? disabledHint : description}
+          </p>
+        </div>
+        <Switch
+          checked={checked}
+          onChange={onToggle}
+          busy={busy}
+          disabled={disabled}
+          label={title}
+        />
+      </div>
+      {children && (
+        <div className="border-t border-[hsl(var(--sb-border))] px-3.5 py-2.5">
+          {children}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function CopyButton({
+  copied,
+  onClick,
+}: {
+  copied: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`shrink-0 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${copied ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-300" : "border-[hsl(var(--sb-border-hover))] hover:bg-[hsl(var(--sb-bg-hover))]"}`}
+    >
+      {copied ? "Copied" : "Copy"}
+    </button>
+  );
+}
+
+/** Read-only URL field with Copy (and an optional Open link). */
+function LinkRow({
+  url,
+  copied,
+  onCopy,
+  label,
+  openHref,
+}: {
+  url: string;
+  copied: boolean;
+  onCopy: () => void;
+  label?: string;
+  openHref?: string;
+}) {
+  return (
+    <div>
+      {label && (
+        <p className="mb-1 text-[11px] text-[hsl(var(--sb-text-faint))]">
+          {label}
+        </p>
+      )}
+      <div className="flex items-center gap-2">
+        <input
+          readOnly
+          value={url}
+          aria-label={label ?? "Link"}
+          onFocus={(e) => e.currentTarget.select()}
+          className="min-w-0 flex-1 truncate rounded-lg border border-[hsl(var(--sb-border))] bg-[hsl(var(--sb-bg))] px-2.5 py-1.5 text-xs text-[hsl(var(--sb-text-muted))] outline-none focus:border-[hsl(var(--sb-accent))]"
+        />
+        {openHref && (
+          <a
+            href={openHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shrink-0 rounded-lg px-2 py-1.5 text-xs text-[hsl(var(--sb-text-muted))] no-underline hover:bg-[hsl(var(--sb-bg-hover))] hover:text-white"
+          >
+            Open
+          </a>
+        )}
+        <CopyButton copied={copied} onClick={onCopy} />
+      </div>
+    </div>
   );
 }

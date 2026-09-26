@@ -17,6 +17,8 @@ interface Turn {
   status: "streaming" | "done" | "error";
   mode?: string;
   error?: string;
+  /** Stream ended early; the text above is partial. */
+  interrupted?: boolean;
 }
 
 function Inlines({
@@ -156,7 +158,19 @@ export function AskView() {
           },
           ctl.signal,
         );
-        patch((t) => (t.status === "streaming" ? { ...t, status: "done" } : t));
+        // The stream closed without a `done` event: the connection was cut
+        // (timeout, network). Say so instead of leaving an endless spinner.
+        patch((t) =>
+          t.status !== "streaming"
+            ? t
+            : t.answer.trim()
+              ? { ...t, status: "done", interrupted: true }
+              : {
+                  ...t,
+                  status: "error",
+                  error: "The answer was interrupted. Please try again.",
+                },
+        );
       } catch (e) {
         if ((e as Error).name === "AbortError")
           patch((t) => ({ ...t, status: "done" }));
@@ -235,6 +249,11 @@ export function AskView() {
                   sources={t.sources}
                   streaming={t.status === "streaming"}
                 />
+              )}
+              {t.interrupted && (
+                <p className="mt-2 text-[11px] text-amber-300">
+                  The connection dropped before the answer finished.
+                </p>
               )}
               {t.status === "error" && (
                 <p className="text-sm text-red-300">

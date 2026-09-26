@@ -33,7 +33,8 @@ describe("keywordTags", () => {
     "Sourdough starter needs flour and water. Feed the starter daily; the starter gets bubbly. Bake the sourdough bread hot.";
   it("prefers existing tags mentioned in the text", () => {
     const t = keywordTags(text, ["baking", "sourdough", "unrelated-topic"]);
-    expect(t[0]).toBe("sourdough");
+    expect(t).toEqual(expect.arrayContaining(["baking", "sourdough"])); // "Bake" matches "baking"
+    expect(t.slice(0, 2).sort()).toEqual(["baking", "sourdough"]); // existing tags come first
     expect(t).not.toContain("unrelated-topic");
   });
   it("falls back to repeated distinctive words", () => {

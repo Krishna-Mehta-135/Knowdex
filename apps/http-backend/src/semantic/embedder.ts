@@ -38,12 +38,16 @@ function fnv1a(s: string): number {
 
 /** Light stemmer so "graphs"/"graph", "linking"/"linked" collide. */
 export function stem(w: string): string {
-  if (w.length > 5 && w.endsWith("ing")) return w.slice(0, -3);
-  if (w.length > 4 && w.endsWith("ed")) return w.slice(0, -2);
-  if (w.length > 4 && w.endsWith("es")) return w.slice(0, -2);
-  if (w.length > 3 && w.endsWith("s") && !w.endsWith("ss"))
-    return w.slice(0, -1);
-  return w;
+  let r = w;
+  if (r.length > 4 && r.endsWith("ies")) r = `${r.slice(0, -3)}y`;
+  else if (r.length > 5 && r.endsWith("ing")) r = r.slice(0, -3);
+  else if (r.length > 4 && r.endsWith("ed")) r = r.slice(0, -2);
+  else if (r.length > 4 && r.endsWith("es")) r = r.slice(0, -2);
+  else if (r.length > 3 && r.endsWith("s") && !r.endsWith("ss"))
+    r = r.slice(0, -1);
+  // "bake"/"baking"/"baked" -> "bak": drop a trailing silent e after suffix stripping.
+  if (r.length > 3 && r.endsWith("e")) r = r.slice(0, -1);
+  return r;
 }
 
 const LOCAL_DIM = 512;
@@ -54,7 +58,7 @@ const LOCAL_DIM = 512;
  * Lexical rather than truly semantic, but stable and good enough as a fallback.
  */
 export class LocalHashEmbedder implements Embedder {
-  public readonly name = "local-hash-v1";
+  public readonly name = "local-hash-v2";
   public readonly ghostThreshold = 0.18;
   public readonly relatedThreshold = 0.144;
   public readonly searchFloor = 0.05;
