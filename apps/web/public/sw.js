@@ -9,7 +9,7 @@
  * - Never caches writes, streams (Ask/assist), or the WebSocket.
  * The API/page caches are cleared on sign-out (see 'clear-user-data').
  */
-const VERSION = "v1";
+const VERSION = "v2";
 const STATIC = `kx-static-${VERSION}`;
 const PAGES = `kx-pages-${VERSION}`;
 const API = `kx-api-${VERSION}`;
@@ -72,16 +72,20 @@ function withTimeout(promise, ms) {
   });
 }
 
-async function networkFirst(request, cacheName, ms, fallback) {
+// Next sends `Vary: rsc, next-router-*`; key by plain URL and ignore Vary so a
+// stored page is found again regardless of request headers.
+const keyOf = (request) => new URL(request.url).href;
+
+async function networkFirst(event, request, cacheName, ms, fallback) {
   const cache = await caches.open(cacheName);
   try {
     const res = await withTimeout(fetch(request), ms);
     // Only remember good, non-redirected, non-streamed responses.
     if (res.ok && !res.redirected && res.type === "basic")
-      cache.put(request, res.clone());
+      event.waitUntil(cache.put(keyOf(request), res.clone()).catch(() => {}));
     return res;
   } catch {
-    const hit = await cache.match(request);
+    const hit = await cache.match(keyOf(request), { ignoreVary: true });
     if (hit) return hit;
     if (fallback) return fallback();
     return new Response(JSON.stringify({ error: "offline" }), {
@@ -106,7 +110,7 @@ self.addEventListener("fetch", (event) => {
         const hit = await cache.match(req);
         if (hit) return hit;
         const res = await fetch(req);
-        if (res.ok) cache.put(req, res.clone());
+        if (res.ok) event.waitUntil(cache.put(req, res.clone()));
         return res;
       }),
     );
@@ -116,6 +120,7 @@ self.addEventListener("fetch", (event) => {
   if (req.mode === "navigate") {
     event.respondWith(
       networkFirst(
+        event,
         req,
         PAGES,
         4000,
@@ -126,6 +131,6 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (API_ALLOW.some((re) => re.test(url.pathname))) {
-    event.respondWith(networkFirst(req, API, 3000));
+    event.respondWith(networkFirst(event, req, API, 3000));
   }
 });
