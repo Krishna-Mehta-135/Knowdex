@@ -94,6 +94,8 @@ export async function* streamGemini(
               ...(opts.systemInstruction && {
                 systemInstruction: opts.systemInstruction,
               }),
+            }, {
+              ...(process.env.GEMINI_BASE_URL && { baseUrl: process.env.GEMINI_BASE_URL }),
             })
             .generateContentStream(
               prompt,
@@ -143,6 +145,8 @@ export async function generateJson<T>(
         .getGenerativeModel({
           model: name,
           generationConfig: { responseMimeType: "application/json", ...FAST },
+        }, {
+          ...(process.env.GEMINI_BASE_URL && { baseUrl: process.env.GEMINI_BASE_URL }),
         })
         .generateContent(prompt, signal ? { signal } : undefined);
       const text = res.response
