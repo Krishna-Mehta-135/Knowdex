@@ -142,6 +142,8 @@ export class GeminiAIService implements AIService {
                     thinkingConfig: { thinkingBudget: 0 },
                   } as Record<string, unknown>,
                 }),
+              }, {
+                ...(process.env.GEMINI_BASE_URL && { baseUrl: process.env.GEMINI_BASE_URL }),
               })
               .generateContentStream(prompt, { signal: controller.signal });
             modelCooldownUntil.delete(name);

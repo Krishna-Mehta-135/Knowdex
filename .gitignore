@@ -41,3 +41,6 @@ yarn-error.log*
 GEMINI.md
 certs
 graphify-out/
+
+# Generated benchmark results
+bench/results/
