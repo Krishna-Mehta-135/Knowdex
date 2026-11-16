@@ -338,8 +338,36 @@ importers:
       '@types/ws':
         specifier: ^8.5.10
         version: 8.18.1
+      tsx:
+        specifier: ^4.21.0
+        version: 4.21.0
       typescript:
         specifier: ^5.4.5
+        version: 5.9.2
+
+  bench:
+    dependencies:
+      '@repo/crdt':
+        specifier: workspace:*
+        version: link:../packages/crdt
+      ws:
+        specifier: ^8.18.0
+        version: 8.21.3
+      yjs:
+        specifier: ^13.6.30
+        version: 13.6.30
+    devDependencies:
+      '@types/node':
+        specifier: ^20.19.39
+        version: 20.19.39
+      '@types/ws':
+        specifier: ^8.5.10
+        version: 8.18.1
+      tsx:
+        specifier: ^4.21.0
+        version: 4.21.0
+      typescript:
+        specifier: 5.9.2
         version: 5.9.2
 
   packages/config:

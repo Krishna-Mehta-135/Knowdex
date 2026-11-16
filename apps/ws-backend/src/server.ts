@@ -15,6 +15,8 @@ const HEARTBEAT_INTERVAL = 30_000;
 const HEARTBEAT_TIMEOUT = 10_000;
 const HEARTBEAT_SCAN_INTERVAL = 1_000;
 const DOCUMENT_PATH_PREFIX = "/ws/documents/";
+const BENCH_ENDPOINT_ENABLED = process.env.KNOWDEX_BENCH === "1";
+const BENCH_DOCUMENT_ID = "00000000-0000-4000-8000-000000000002";
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -106,8 +108,42 @@ const coalesceManager = new CoalesceBufferManager(
   roomManager,
   redisTransport,
 );
+const coalesceIntervalMs = coalesceManager.getIntervalMs();
 
 const server = createServer((req, res) => {
+  if (BENCH_ENDPOINT_ENABLED && req.url === "/bench/counters") {
+    if (req.method === "GET") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(roomManager.getOutboundUpdateStats("receiver-")));
+      return;
+    }
+    if (req.method === "POST") {
+      roomManager.resetOutboundUpdateStats();
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+  }
+
+  if (
+    BENCH_ENDPOINT_ENABLED &&
+    req.method === "GET" &&
+    req.url === "/bench/config"
+  ) {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ coalesce_interval_ms: coalesceIntervalMs }));
+    return;
+  }
+
+  if (
+    BENCH_ENDPOINT_ENABLED &&
+    req.method === "POST" &&
+    req.url === "/bench/reset"
+  ) {
+    void resetBenchDocument(res);
+    return;
+  }
+
   // Lightweight health probe — no auth required
   if (req.method === "GET" && req.url === "/health") {
     res.writeHead(200, { "Content-Type": "application/json" });
@@ -174,6 +210,7 @@ server.on("upgrade", async (req, socket, head) => {
       connectedAt: Date.now(),
       isAlive: true,
       isOfflineClient,
+      benchRole: BENCH_ENDPOINT_ENABLED ? extractBenchRole(req) : undefined,
       bucket: new TokenBucket(CLIENT_LIMIT_CAPACITY, CLIENT_LIMIT_REFILL),
     };
 
@@ -593,6 +630,13 @@ function extractDocumentId(req: IncomingMessage): string | null {
   return UUID_PATTERN.test(docId) ? docId : null;
 }
 
+function extractBenchRole(req: IncomingMessage): string | undefined {
+  const role = req.headers["x-projectbench-role"];
+  return typeof role === "string" && /^(?:sender|receiver)-[1-9]\d*$/.test(role)
+    ? role
+    : undefined;
+}
+
 function getRequestUrl(req: IncomingMessage): URL {
   return new URL(req.url ?? "", "http://localhost");
 }
@@ -615,6 +659,30 @@ function rejectUpgrade(socket: Duplex, httpCode: 401 | 403): void {
   const statusLine = httpCode === 401 ? "401 Unauthorized" : "403 Forbidden";
   socket.write(`HTTP/1.1 ${statusLine}\r\n\r\n`);
   socket.destroy();
+}
+
+async function resetBenchDocument(
+  res: import("http").ServerResponse,
+): Promise<void> {
+  try {
+    await coalesceManager.flushAll();
+    const destroyResult = await documentManager.destroy(BENCH_DOCUMENT_ID);
+    if (!destroyResult.ok) {
+      throw new Error(destroyResult.error.message);
+    }
+    await prisma.document.deleteMany({ where: { id: BENCH_DOCUMENT_ID } });
+    roomManager.resetOutboundUpdateStats();
+    res.writeHead(204);
+    res.end();
+  } catch (error: unknown) {
+    logger(
+      "error",
+      { reason: error instanceof Error ? error.message : "bench reset failed" },
+      "bench reset failed",
+    );
+    res.writeHead(500, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "bench reset failed" }));
+  }
 }
 
 function logger(

@@ -7,6 +7,7 @@ const composeFile = new URL('../docker-compose.bench.yml', import.meta.url);
 const makefile = readFileSync(new URL('../Makefile', import.meta.url), 'utf8');
 const hostCpuScript = readFileSync(new URL('./host-cpu.sh', import.meta.url), 'utf8');
 const generatorDockerfile = readFileSync(new URL('./generator/Dockerfile', import.meta.url), 'utf8');
+const seedSql = readFileSync(new URL('./seed.sql', import.meta.url), 'utf8');
 
 test('benchmark seed is not a Postgres init script', () => {
   const config = JSON.parse(
@@ -33,7 +34,7 @@ test('bench-up seeds only after the health-gated stack starts', () => {
 });
 
 test('benchmark targets follow the acceptance names', () => {
-	assert.match(makefile, /^\.PHONY: bench-up bench-down bench-trivial claim$/m);
+  assert.match(makefile, /^\.PHONY: bench-up bench-down bench-trivial bench-knowdex-coalesce claim$/m);
 	assert.match(makefile, /^bench-trivial:\s*$/m);
 	assert.match(makefile, /^claim: bench-trivial\s*$/m);
 });
@@ -76,4 +77,46 @@ test('bench-trivial records a model instead of uname architecture', () => {
   assert.match(hostCpuScript, /Darwin\)/);
   assert.match(hostCpuScript, /Linux\)/);
   assert.match(hostCpuScript, /unable to determine host CPU model/);
+});
+
+test('W3 recreates only the WS backend and verifies the interval before a run', () => {
+  assert.match(makefile, /--force-recreate --wait ws-backend-bench/);
+  assert.match(makefile, /bench\/config/);
+  assert.match(makefile, /KNOWDEX_COALESCE_INTERVAL_MS=\$\$interval/);
+});
+
+test('W3 generator uses explicit workspace dependencies and Compose DNS', () => {
+  const benchPackage = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
+  assert.equal(benchPackage.dependencies['@repo/crdt'], 'workspace:*');
+  assert.equal(benchPackage.dependencies.ws, '^8.18.0');
+  assert.equal(benchPackage.dependencies.yjs, '^13.6.30');
+  assert.match(readFileSync(new URL('./knowdex-coalesce.ts', import.meta.url), 'utf8'), /ws-backend-bench:8080/);
+  assert.match(generatorDockerfile, /cd \/app\/bench && node --input-type=module -e/);
+  assert.doesNotMatch(generatorDockerfile, /RUN node --input-type=module -e/);
+  assert.match(generatorDockerfile, /await import\('ws'\).*await import\('yjs'\).*await import\('@repo\/crdt'\)/s);
+});
+
+test('W3 seed supplies required Content timestamps', () => {
+  assert.match(seedSql, /"createdAt", "updatedAt"/);
+  assert.match(seedSql, /CURRENT_TIMESTAMP,\s*CURRENT_TIMESTAMP/);
+});
+
+test('W3 results fail closed on provenance and record canonical frame metric', () => {
+  const harness = readFileSync(new URL('./knowdex-coalesce.ts', import.meta.url), 'utf8');
+  assert.match(harness, /requiredEnv\("BENCH_COMMIT"\)/);
+  assert.match(harness, /requiredEnv\("BENCH_IMAGE_DIGEST"\)/);
+  assert.match(harness, /outbound_frames_per_receiver/);
+  assert.match(harness, /outbound_bytes_per_receiver/);
+  assert.match(harness, /const startedAt = new Date\(\)\.toISOString\(\);[\s\S]*const result = await runWorkload/);
+  assert.doesNotMatch(harness, /local-unset|repeat\(64\)/);
+});
+
+test('W3 focused suites are wired into CI package scripts under tsx', () => {
+  const wsPackage = JSON.parse(readFileSync(new URL('../apps/ws-backend/package.json', import.meta.url), 'utf8'));
+  const benchPackage = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
+  assert.equal(wsPackage.scripts.test, 'tsx --test src/*.test.ts');
+  assert.equal(benchPackage.scripts.test, 'tsx --test *.test.ts');
+  assert.equal(benchPackage.scripts.typecheck, 'tsc --noEmit -p tsconfig.json');
+  assert.doesNotMatch(wsPackage.scripts.test, /experimental-strip-types/);
+  assert.doesNotMatch(benchPackage.scripts.test, /experimental-strip-types/);
 });
