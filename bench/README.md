@@ -22,6 +22,12 @@ target verifies `/bench/config` before accepting a run. A real warm-up run is
 discarded before the five interleaved A/B repetitions. Results are written to
 the ignored `bench/results/` directory.
 
+To rerun one workload after an invalid run, use, for example,
+`make bench-knowdex-coalesce BENCH_WORKLOADS=ai_stream`. The default runs all
+four. Generator CPU is sampled over one-second windows; a shorter workload
+uses its full measured duration. Any run above 70% is rejected without a
+result file.
+
 Typist operations use unique synthetic Unicode characters from the private-use
 range so each one can be matched to receiver visibility for latency. They are
 one character per operation but are not ASCII; encoded frame bytes may therefore

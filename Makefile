@@ -2,6 +2,8 @@ BENCH_COMPOSE := docker compose -f docker-compose.bench.yml
 
 .PHONY: bench-up bench-down bench-trivial bench-knowdex-coalesce claim
 
+BENCH_WORKLOADS ?= one_typist five_typists paste_burst ai_stream
+
 bench-up:
 	$(BENCH_COMPOSE) up -d --build --wait
 	@curl --fail --silent --show-error http://127.0.0.1:18000/health >/dev/null
@@ -46,7 +48,7 @@ bench-knowdex-coalesce:
 		commit=$$(git rev-parse HEAD); host_cpu=$$(sh bench/host-cpu.sh); docker_version=$$(docker version --format '{{.Server.Version}}'); host_os=$$(uname -srv); \
 		test -n "$$commit"; test -n "$$host_cpu"; test -n "$$docker_version"; test -n "$$host_os"; \
 		mkdir -p bench/results; \
-		for workload in one_typist five_typists paste_burst ai_stream; do \
+		for workload in $(BENCH_WORKLOADS); do \
 			for variant_spec in 'baseline 0' 'candidate 16'; do \
 				set -- $$variant_spec; variant=$$1; interval=$$2; \
 				KNOWDEX_COALESCE_INTERVAL_MS=$$interval $(BENCH_COMPOSE) up -d --no-deps --force-recreate --wait ws-backend-bench >/dev/null; \
