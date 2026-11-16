@@ -1,0 +1,20 @@
+{
+  "extends": "../packages/config/tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "types": ["node"],
+    "paths": {
+      "@repo/*": ["../packages/*/src/index.ts"],
+      "@repo/types": ["../packages/types/src/index.ts"],
+      "@repo/crdt": ["../packages/crdt/src/index.ts"]
+    }
+  },
+  "include": [
+    "harness.ts",
+    "knowdex-coalesce.ts",
+    "provenance.ts",
+    "trivial.ts"
+  ],
+  "exclude": ["node_modules", "results"]
+}

@@ -117,6 +117,8 @@ services:
       GEMINI_API_KEY: projectbench-fake-key
       GEMINI_BASE_URL: http://fake-gemini:9000
       GEMINI_MODEL: fake-gemini
+      KNOWDEX_BENCH: '1'
+      KNOWDEX_COALESCE_INTERVAL_MS: '${KNOWDEX_COALESCE_INTERVAL_MS:-16}'
     depends_on:
       redis-bench:
         condition: service_healthy

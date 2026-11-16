@@ -1,12 +1,49 @@
-import * as Y from "yjs";
-import { DocumentManager } from "./document-manager.js";
 import { encodeMessage } from "./protocol.js";
-import { RoomManager } from "./room-manager.js";
-import { RedisTransport } from "./redis-transport.js";
 import { TokenBucket } from "./token-bucket.js";
 import { mergeUpdates } from "@repo/crdt";
 
-const COALESCE_INTERVAL_MS = 16;
+interface DocumentUpdater {
+  applyUpdate(
+    docId: string,
+    update: Uint8Array,
+  ): Promise<{ ok: true } | { ok: false; error: { message: string } }>;
+}
+
+interface UpdateBroadcaster {
+  broadcast(
+    docId: string,
+    update: Uint8Array,
+    excludeClientId?: string,
+  ): Promise<void>;
+}
+
+interface UpdatePublisher {
+  publish(docId: string, update: Uint8Array, originClientId: string): void;
+}
+
+const DEFAULT_COALESCE_INTERVAL_MS = 16;
+
+export function readCoalesceIntervalMs(
+  env: NodeJS.ProcessEnv = process.env,
+): number {
+  const raw = env.KNOWDEX_COALESCE_INTERVAL_MS;
+  if (raw === undefined) {
+    return DEFAULT_COALESCE_INTERVAL_MS;
+  }
+  if (!/^\d+$/.test(raw)) {
+    throw new Error(
+      "KNOWDEX_COALESCE_INTERVAL_MS must be a nonnegative integer",
+    );
+  }
+
+  const intervalMs = Number(raw);
+  if (!Number.isSafeInteger(intervalMs) || intervalMs < 0) {
+    throw new Error(
+      "KNOWDEX_COALESCE_INTERVAL_MS must be a safe nonnegative integer",
+    );
+  }
+  return intervalMs;
+}
 /**
  * Per-document broadcast rate limit.
  * Capacity: 200 messages burst, Refill: 200/s.
@@ -25,23 +62,30 @@ interface CoalesceBuffer {
 export class CoalesceBufferManager {
   private buffers = new Map<string, CoalesceBuffer>();
   private docBuckets = new Map<string, TokenBucket>();
-  private documentManager: DocumentManager;
-  private roomManager: RoomManager;
-  private redisTransport: RedisTransport;
+  private documentManager: DocumentUpdater;
+  private roomManager: UpdateBroadcaster;
+  private redisTransport: UpdatePublisher;
+  private intervalMs: number;
 
   constructor(
-    documentManager: DocumentManager,
-    roomManager: RoomManager,
-    redisTransport: RedisTransport,
+    documentManager: DocumentUpdater,
+    roomManager: UpdateBroadcaster,
+    redisTransport: UpdatePublisher,
+    intervalMs = readCoalesceIntervalMs(),
   ) {
     this.documentManager = documentManager;
     this.roomManager = roomManager;
     this.redisTransport = redisTransport;
+    this.intervalMs = intervalMs;
+  }
+
+  public getIntervalMs(): number {
+    return this.intervalMs;
   }
 
   /**
    * Enqueues an update for a document.
-   * Flushes after 16ms (one animation frame).
+   * Flushes after the configured interval (one animation frame by default).
    */
   public enqueueUpdate(
     docId: string,
@@ -62,10 +106,12 @@ export class CoalesceBufferManager {
     buffer.updates.push(update);
     if (originClientId) buffer.senders.add(originClientId);
 
-    if (!buffer.flushTimer) {
+    if (this.intervalMs === 0) {
+      void this.flushBuffer(docId);
+    } else if (!buffer.flushTimer) {
       buffer.flushTimer = setTimeout(() => {
         void this.flushBuffer(docId);
-      }, COALESCE_INTERVAL_MS);
+      }, this.intervalMs);
     }
   }
 
@@ -132,9 +178,12 @@ export class CoalesceBufferManager {
     // This preserves CRDT consistency while protecting the system.
     const bucket = this.getDocBucket(docId);
     if (!bucket.consume()) {
-      buffer.flushTimer = setTimeout(() => {
-        void this.flushBuffer(docId);
-      }, COALESCE_INTERVAL_MS);
+      buffer.flushTimer = setTimeout(
+        () => {
+          void this.flushBuffer(docId);
+        },
+        Math.max(1, this.intervalMs),
+      );
       return;
     }
 
