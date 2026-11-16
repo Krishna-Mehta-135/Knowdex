@@ -124,6 +124,49 @@ type RunResult = {
   generatorCpuPercent: number;
 };
 
+type CpuUsageSample = { user: number; system: number };
+
+export type CpuPeakSampler = {
+  stop: () => number;
+};
+
+export function createCpuPeakSampler(
+  readCpuUsage: (
+    previous?: CpuUsageSample,
+  ) => CpuUsageSample = process.cpuUsage,
+  readWallMicros: () => number = () => performance.now() * 1_000,
+): CpuPeakSampler {
+  let previousCpu = readCpuUsage();
+  let previousWall = readWallMicros();
+  let peakCpuPercent = 0;
+  let stopped = false;
+
+  const sample = (): void => {
+    const currentCpu = readCpuUsage(previousCpu);
+    const currentWall = readWallMicros();
+    const wallMicros = currentWall - previousWall;
+    if (wallMicros > 0)
+      peakCpuPercent = Math.max(
+        peakCpuPercent,
+        ((currentCpu.user + currentCpu.system) / wallMicros) * 100,
+      );
+    previousCpu = readCpuUsage();
+    previousWall = currentWall;
+  };
+
+  const timer = setInterval(sample, 50);
+  return {
+    stop: () => {
+      if (!stopped) {
+        clearInterval(timer);
+        sample();
+        stopped = true;
+      }
+      return peakCpuPercent;
+    },
+  };
+}
+
 function base64Url(value: string): string {
   return Buffer.from(value).toString("base64url");
 }
@@ -263,20 +306,7 @@ async function runWorkload(workload: WorkloadName): Promise<RunResult> {
   const senders: Client[] = [];
   const receivers: Client[] = [];
   let peakCpuPercent = 0;
-  let previousCpu = process.cpuUsage();
-  let previousWall = performance.now();
-  const cpuSampler = setInterval(() => {
-    const currentCpu = process.cpuUsage(previousCpu);
-    const currentWall = performance.now();
-    const wallMicros = (currentWall - previousWall) * 1_000;
-    if (wallMicros > 0)
-      peakCpuPercent = Math.max(
-        peakCpuPercent,
-        ((currentCpu.user + currentCpu.system) / wallMicros) * 100,
-      );
-    previousCpu = process.cpuUsage();
-    previousWall = currentWall;
-  }, 50);
+  let stopCpuSampler: (() => void) | undefined;
 
   try {
     for (let index = 0; index < RECEIVER_COUNT; index += 1) {
@@ -305,6 +335,11 @@ async function runWorkload(workload: WorkloadName): Promise<RunResult> {
     const senderStateVectors = senders.map((sender) =>
       Y.encodeStateVector(sender.doc),
     );
+    const cpuSampler = createCpuPeakSampler();
+    stopCpuSampler = () => {
+      peakCpuPercent = cpuSampler.stop();
+      stopCpuSampler = undefined;
+    };
     for (const tick of workloadSchedule(workload)) {
       if (tick.delayBeforeMs > 0) await wait(tick.delayBeforeMs);
       for (const operation of tick.operations) {
@@ -344,6 +379,7 @@ async function runWorkload(workload: WorkloadName): Promise<RunResult> {
         "self-check failed: all clients did not converge before timeout",
       );
     }
+    stopCpuSampler();
     const counters = await readCounters();
     const receiverEntries = receiverEntriesInNumericOrder(counters);
     if (receiverEntries.length !== RECEIVER_COUNT)
@@ -379,7 +415,7 @@ async function runWorkload(workload: WorkloadName): Promise<RunResult> {
       generatorCpuPercent: peakCpuPercent,
     };
   } finally {
-    clearInterval(cpuSampler);
+    stopCpuSampler?.();
     await Promise.all([...senders, ...receivers].map(closeClient));
   }
 }
