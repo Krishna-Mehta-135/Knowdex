@@ -154,7 +154,8 @@ export function createCpuPeakSampler(
     previousWall = currentWall;
   };
 
-  const timer = setInterval(sample, 50);
+  // CPU utilization is sampled over one-second windows; short bursts use the final partial window.
+  const timer = setInterval(sample, 1_000);
   return {
     stop: () => {
       if (!stopped) {
@@ -542,6 +543,7 @@ async function main(): Promise<void> {
     limitations: [
       "Final measurements require the 12 GB Docker memory checkpoint.",
       "The experiment is local Docker only and excludes sync, awareness, and control frames from the update counters.",
+      "Generator CPU peak uses 1-second sampling windows; workloads shorter than 1 second use their full measured duration.",
       "Typist latency markers use unique synthetic private-use Unicode characters; their encoded bytes may differ from ASCII typing.",
     ],
   };
