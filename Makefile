@@ -41,7 +41,7 @@ claim: bench-trivial
 bench-knowdex-coalesce:
 	@set -eu; \
 		memory_bytes=$$(docker info --format '{{.MemTotal}}'); \
-		test "$$memory_bytes" -ge 12884901888 || { echo "Docker memory checkpoint not met: $$memory_bytes bytes; need at least 12884901888" >&2; exit 2; }; \
+		test "$$memory_bytes" -ge 12000000000 || { echo "Docker memory checkpoint not met: need at least 12 GB (decimal, 12000000000 bytes); 12 GiB (binary) is 12884901888 bytes; Docker reports $$memory_bytes bytes." >&2; exit 2; }; \
 		$(MAKE) bench-up; \
 		commit=$$(git rev-parse HEAD); host_cpu=$$(sh bench/host-cpu.sh); docker_version=$$(docker version --format '{{.Server.Version}}'); host_os=$$(uname -srv); \
 		test -n "$$commit"; test -n "$$host_cpu"; test -n "$$docker_version"; test -n "$$host_os"; \

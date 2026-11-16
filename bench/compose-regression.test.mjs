@@ -120,3 +120,12 @@ test('W3 focused suites are wired into CI package scripts under tsx', () => {
   assert.doesNotMatch(wsPackage.scripts.test, /experimental-strip-types/);
   assert.doesNotMatch(benchPackage.scripts.test, /experimental-strip-types/);
 });
+
+test('W3 memory gate uses the plan\'s decimal 12 GB boundary', () => {
+  assert.match(makefile, /-ge 12000000000/);
+  assert.doesNotMatch(makefile, /-ge 12884901888/);
+  assert.match(makefile, /12 GB \(decimal, 12000000000 bytes\)/);
+  assert.match(makefile, /12 GiB \(binary\) is 12884901888 bytes/);
+  assert.equal(12480258048 >= 12000000000, true);
+  assert.equal(11999999999 >= 12000000000, false);
+});
